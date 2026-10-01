@@ -25,6 +25,13 @@ uv run hanabi-ck run configs/smoke.yaml
 
 Results are written under `runs/`.
 
+The smoke config uses a deterministic baseline that deliberately ignores the
+common-knowledge prompt manipulation. Its purpose is to validate game dynamics,
+observations, logging, and metrics. The CK rows should therefore match each
+other, while the baseline should still produce successful plays and a non-zero
+score. The baseline only plays cards that are provably playable under its
+hint-derived public knowledge.
+
 ## Run a local LLM (LM Studio / OpenAI-compatible API)
 
 Start an OpenAI-compatible server, then:
