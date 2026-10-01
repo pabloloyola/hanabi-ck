@@ -72,6 +72,8 @@ class HanabiGame:
         self.hands[player].append(card)
         self.knowledge[player].append(CardKnowledge())
         if not self.deck and self.final_turns_remaining is None:
+            # The action that draws the final card does not itself consume one
+            # of the final turns. Each player gets one more turn afterward.
             self.final_turns_remaining = self.num_players
         return card
 
@@ -147,6 +149,7 @@ class HanabiGame:
             raise RuntimeError("Game is already over")
         self._validate(action)
         actor = self.current_player
+        final_round_was_already_active = self.final_turns_remaining is not None
 
         outcome: dict[str, Any] = {
             "actor": actor,
@@ -208,7 +211,7 @@ class HanabiGame:
             self.done = True
             outcome["terminal_reason"] = "lives_exhausted"
         else:
-            if self.final_turns_remaining is not None:
+            if final_round_was_already_active and self.final_turns_remaining is not None:
                 self.final_turns_remaining -= 1
                 if self.final_turns_remaining <= 0:
                     self.done = True
