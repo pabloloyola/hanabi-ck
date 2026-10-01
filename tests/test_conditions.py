@@ -20,3 +20,14 @@ def test_ck_inf_declares_common_knowledge():
         player_id=0, num_players=2, convention="C"
     )
     assert "common knowledge" in text
+
+
+def test_ck1_is_asymmetric():
+    p0 = get_condition("ck1_private").private_instruction(
+        player_id=0, num_players=2, convention="SECRET CONVENTION"
+    )
+    p1 = get_condition("ck1_private").private_instruction(
+        player_id=1, num_players=2, convention="SECRET CONVENTION"
+    )
+    assert "SECRET CONVENTION" in p0
+    assert "SECRET CONVENTION" not in p1
