@@ -1,0 +1,32 @@
+experiment: llm_debug
+output_dir: runs
+
+num_players: 2
+seeds: [0]
+conditions:
+  - ck0
+  - ck_inf_common
+
+convention: >-
+  If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played
+  as soon as it is safe to do so.
+
+agents:
+  - type: openai_compatible
+    name: llm_A
+    model: local-model
+    base_url: http://localhost:1234/v1
+    temperature: 0.0
+    timeout_s: 60
+  - type: openai_compatible
+    name: llm_B
+    model: local-model
+    base_url: http://localhost:1234/v1
+    temperature: 0.0
+    timeout_s: 60
+
+agent_error_policy: abort
+
+log_private_instructions: true
+log_raw_model_responses: true
