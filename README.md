@@ -44,8 +44,8 @@ not silently terminate.
 The initial conditions are:
 
 - `ck0`: no convention supplied.
-- `ck1_private`: convention supplied privately; the agent is not told whether
-  the partner received it.
+- `ck1_private`: convention supplied only to player 0; player 0 is not told
+  whether the partner received it.
 - `ck2_shared`: convention supplied to all agents, but no statement about the
   partner's information.
 - `ck3_mutual`: each agent is explicitly told the partner received the same
