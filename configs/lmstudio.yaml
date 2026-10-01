@@ -27,5 +27,7 @@ agents:
     base_url: http://localhost:1234/v1
     temperature: 0.0
 
+agent_error_policy: abort
+
 log_private_instructions: true
 log_raw_model_responses: true
