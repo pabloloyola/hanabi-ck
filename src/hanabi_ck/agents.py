@@ -47,11 +47,140 @@ class RandomAgent:
         return AgentDecision(action=self.rng.choice(legal_actions))
 
 
+def _candidate_count(knowledge: dict[str, Any]) -> int:
+    return len(knowledge["possible_colors"]) * len(knowledge["possible_ranks"])
+
+
+def _safe_to_play(knowledge: dict[str, Any], stacks: dict[str, int]) -> bool:
+    colors = knowledge["possible_colors"]
+    ranks = knowledge["possible_ranks"]
+    return bool(colors and ranks) and all(
+        stacks[color] + 1 == rank
+        for color in colors
+        for rank in ranks
+    )
+
+
+def _safe_to_discard(knowledge: dict[str, Any], stacks: dict[str, int]) -> bool:
+    colors = knowledge["possible_colors"]
+    ranks = knowledge["possible_ranks"]
+    return bool(colors and ranks) and all(
+        rank <= stacks[color]
+        for color in colors
+        for rank in ranks
+    )
+
+
+def _simulate_hint(
+    cards: list[dict[str, Any]],
+    knowledge: list[dict[str, Any]],
+    action: Action,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+
+    for card, card_knowledge in zip(cards, knowledge):
+        colors = set(card_knowledge["possible_colors"])
+        ranks = set(card_knowledge["possible_ranks"])
+
+        if action.attribute == "color":
+            value = str(action.value)
+            matches = card["color"] == value
+            if matches:
+                colors.intersection_update({value})
+            else:
+                colors.discard(value)
+        else:
+            value = int(action.value)
+            matches = int(card["rank"]) == value
+            if matches:
+                ranks.intersection_update({value})
+            else:
+                ranks.discard(value)
+
+        result.append(
+            {
+                "possible_colors": sorted(colors),
+                "possible_ranks": sorted(ranks),
+            }
+        )
+
+    return result
+
+
 class SimpleAgent:
-    """Small deterministic baseline."""
+    """Deterministic epistemically-safe baseline for smoke tests.
+
+    It uses only public hint knowledge about its own cards, never hidden state.
+    Hints are selected using visible partner cards and the partner's public
+    knowledge, which is legal information in Hanabi.
+    """
 
     def __init__(self, name: str = "simple"):
         self.name = name
+
+    def _best_hint(
+        self,
+        observation: PlayerObservation,
+        legal_actions: list[Action],
+        *,
+        require_new_safe: bool,
+    ) -> Action | None:
+        best: Action | None = None
+        best_score: tuple[int, int, int, int] | None = None
+
+        for action in legal_actions:
+            if action.type != "hint" or action.target is None:
+                continue
+
+            cards = observation.other_hands[action.target]
+            before = observation.public_knowledge[action.target]
+            after = _simulate_hint(cards, before, action)
+
+            info_gain = (
+                sum(_candidate_count(k) for k in before)
+                - sum(_candidate_count(k) for k in after)
+            )
+            if info_gain <= 0:
+                continue
+
+            safe_before = [_safe_to_play(k, observation.stacks) for k in before]
+            safe_after = [_safe_to_play(k, observation.stacks) for k in after]
+            newly_safe = sum(
+                (not was_safe) and is_safe
+                for was_safe, is_safe in zip(safe_before, safe_after)
+            )
+
+            if action.attribute == "color":
+                touched = [card["color"] == action.value for card in cards]
+            else:
+                touched = [
+                    int(card["rank"]) == int(action.value)
+                    for card in cards
+                ]
+
+            directly_new_safe = sum(
+                (not was_safe) and is_safe and is_touched
+                for was_safe, is_safe, is_touched in zip(
+                    safe_before,
+                    safe_after,
+                    touched,
+                )
+            )
+
+            if require_new_safe and newly_safe == 0:
+                continue
+
+            score = (
+                directly_new_safe,
+                newly_safe,
+                info_gain,
+                1 if action.attribute == "rank" else 0,
+            )
+            if best_score is None or score > best_score:
+                best_score = score
+                best = action
+
+        return best
 
     def act(
         self,
@@ -61,24 +190,48 @@ class SimpleAgent:
     ) -> AgentDecision:
         del private_instruction
 
-        for i, k in enumerate(observation.own_knowledge):
-            colors = k["possible_colors"]
-            ranks = k["possible_ranks"]
-            if len(colors) == 1 and len(ranks) == 1:
-                color, rank = colors[0], ranks[0]
-                if observation.stacks[color] + 1 == rank:
-                    candidate = Action.play(i)
-                    if candidate in legal_actions:
-                        return AgentDecision(candidate)
+        # Play a card only when every identity consistent with the public hint
+        # information is currently playable.
+        for i, knowledge in enumerate(observation.own_knowledge):
+            action = Action.play(i)
+            if action in legal_actions and _safe_to_play(knowledge, observation.stacks):
+                return AgentDecision(action)
 
-        for a in legal_actions:
-            if a.type == "hint" and a.attribute == "rank":
-                return AgentDecision(a)
+        # Prefer hints that create at least one provably safe play.
+        hint = self._best_hint(
+            observation,
+            legal_actions,
+            require_new_safe=True,
+        )
+        if hint is not None:
+            return AgentDecision(hint)
 
-        for a in legal_actions:
-            if a.type == "discard" and a.card_index == 0:
-                return AgentDecision(a)
+        # Prefer a provably useless card when discarding is legal.
+        for i, knowledge in enumerate(observation.own_knowledge):
+            action = Action.discard(i)
+            if action in legal_actions and _safe_to_discard(knowledge, observation.stacks):
+                return AgentDecision(action)
 
+        # If discarding is allowed, cycle the oldest card rather than spending
+        # hints that do not create an actionable safe play.
+        oldest = Action.discard(0)
+        if oldest in legal_actions:
+            return AgentDecision(oldest)
+
+        # At eight information tokens discard is illegal, so use the most
+        # informative non-redundant hint available.
+        hint = self._best_hint(
+            observation,
+            legal_actions,
+            require_new_safe=False,
+        )
+        if hint is not None:
+            return AgentDecision(hint)
+
+        # Rare fallback: for example, every legal hint is redundant at max tokens.
+        for action in legal_actions:
+            if action.type == "hint":
+                return AgentDecision(action)
         return AgentDecision(legal_actions[0])
 
 
@@ -113,7 +266,10 @@ class OpenAICompatibleAgent:
     ):
         self.name = name
         self.model = model
-        self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1")).rstrip("/")
+        self.base_url = (
+            base_url
+            or os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1")
+        ).rstrip("/")
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "lm-studio")
         self.temperature = temperature
         self.timeout_s = timeout_s
@@ -127,6 +283,7 @@ class OpenAICompatibleAgent:
         system = """You are a Hanabi-playing research agent.
 You must choose exactly one legal action.
 You cannot see your own cards except through the supplied card-knowledge sets.
+The public_knowledge field records hint-derived knowledge that every player can observe.
 Never infer hidden state from the research setup.
 Return ONLY one JSON object corresponding exactly to one legal action.
 Do not include explanation."""
@@ -153,7 +310,11 @@ Do not include explanation."""
     ) -> AgentDecision:
         payload = {
             "model": self.model,
-            "messages": self._prompt(observation, legal_actions, private_instruction),
+            "messages": self._prompt(
+                observation,
+                legal_actions,
+                private_instruction,
+            ),
             "temperature": self.temperature,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -172,7 +333,9 @@ Do not include explanation."""
             parsed = _extract_json_object(raw)
             action = Action.from_dict(parsed)
             if action not in legal_actions:
-                raise ValueError(f"Model returned illegal action: {action.to_dict()}")
+                raise ValueError(
+                    f"Model returned illegal action: {action.to_dict()}"
+                )
             return AgentDecision(action=action, raw_response=raw)
         except Exception as exc:
             return AgentDecision(
