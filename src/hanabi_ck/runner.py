@@ -7,11 +7,15 @@ from typing import Any
 
 import yaml
 
-from .agents import OpenAICompatibleAgent, RandomAgent, SimpleAgent
+from .actions import Action
+from .agents import AgentDecision, OpenAICompatibleAgent, RandomAgent, SimpleAgent
 from .conditions import DEFAULT_CONVENTION, get_condition
 from .engine import HanabiGame
 from .logging import JsonlLogger
 from .metrics import aggregate_games, summarize_game
+
+
+ERROR_POLICIES = {"abort", "safe_baseline"}
 
 
 def _hash_text(text: str) -> str:
@@ -45,6 +49,36 @@ def load_config(path: str | Path) -> dict[str, Any]:
     return cfg
 
 
+def _resolve_agent_decision(
+    decision: AgentDecision,
+    *,
+    error_policy: str,
+    observation,
+    legal_actions: list[Action],
+) -> tuple[Action | None, bool]:
+    """Return the executable action and whether a runner fallback was used."""
+    if decision.action is not None and decision.parse_error is None:
+        return decision.action, False
+
+    if error_policy == "abort":
+        return None, False
+
+    if error_policy == "safe_baseline":
+        fallback = SimpleAgent(name="safe_fallback").act(
+            observation,
+            legal_actions,
+            "",
+        )
+        if fallback.action is None:
+            raise RuntimeError("Safe baseline unexpectedly returned no action")
+        return fallback.action, True
+
+    raise ValueError(
+        f"Unknown agent_error_policy {error_policy!r}; "
+        f"choose from {sorted(ERROR_POLICIES)}"
+    )
+
+
 def run_experiment(config_path: str | Path) -> dict[str, Any]:
     cfg = load_config(config_path)
     experiment = cfg.get("experiment", "hanabi_ck")
@@ -55,6 +89,12 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
     seeds = [int(s) for s in cfg.get("seeds", [0])]
     conditions = list(cfg.get("conditions", ["ck0"]))
     convention = str(cfg.get("convention", DEFAULT_CONVENTION))
+    error_policy = str(cfg.get("agent_error_policy", "abort"))
+    if error_policy not in ERROR_POLICIES:
+        raise ValueError(
+            f"agent_error_policy must be one of {sorted(ERROR_POLICIES)}"
+        )
+
     agent_specs = list(cfg["agents"])
     if len(agent_specs) != num_players:
         raise ValueError("Number of agent specs must equal num_players")
@@ -75,6 +115,9 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                 log_path.unlink()
             logger = JsonlLogger(log_path)
             turns: list[dict[str, Any]] = []
+            aborted = False
+            abort_reason: str | None = None
+            agent_error_count = 0
 
             while not game.done:
                 p = game.current_player
@@ -86,11 +129,70 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     convention=convention,
                 )
 
-                decision = agents[p].act(observation, legal, private_instruction)
+                decision = agents[p].act(
+                    observation,
+                    legal,
+                    private_instruction,
+                )
+
+                executable_action, runner_fallback_used = _resolve_agent_decision(
+                    decision,
+                    error_policy=error_policy,
+                    observation=observation,
+                    legal_actions=legal,
+                )
+
+                if decision.parse_error is not None:
+                    agent_error_count += 1
+
+                if executable_action is None:
+                    aborted = True
+                    abort_reason = decision.parse_error or "Agent returned no action"
+                    logger.write(
+                        {
+                            "event_kind": "agent_error",
+                            "experiment": experiment,
+                            "condition": condition_name,
+                            "condition_description": condition.description,
+                            "seed": seed,
+                            "turn": len(turns),
+                            "player": p,
+                            "agent": {
+                                "name": agents[p].name,
+                                "type": agent_specs[p]["type"],
+                                "model": agent_specs[p].get("model"),
+                                "response_error": True,
+                                "error": abort_reason,
+                            },
+                            "agent_error_policy": error_policy,
+                            "private_instruction_hash": _hash_text(
+                                private_instruction
+                            ),
+                            "private_instruction": (
+                                private_instruction
+                                if cfg.get("log_private_instructions", True)
+                                else None
+                            ),
+                            "observation": observation.to_dict(),
+                            "legal_actions": [a.to_dict() for a in legal],
+                            "raw_response": (
+                                decision.raw_response
+                                if cfg.get("log_raw_model_responses", True)
+                                else None
+                            ),
+                            "researcher_true_state_before": game.true_state(),
+                            "action": None,
+                            "outcome": None,
+                            "probes": {},
+                        }
+                    )
+                    break
+
                 true_state_before = game.true_state()
-                result = game.step(decision.action)
+                result = game.step(executable_action)
 
                 record = {
+                    "event_kind": "turn",
                     "experiment": experiment,
                     "condition": condition_name,
                     "condition_description": condition.description,
@@ -101,19 +203,28 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                         "name": agents[p].name,
                         "type": agent_specs[p]["type"],
                         "model": agent_specs[p].get("model"),
-                        "fallback_used": decision.fallback_used,
-                        "parse_error": decision.parse_error,
+                        "response_error": decision.parse_error is not None,
+                        "error": decision.parse_error,
+                        "fallback_used": runner_fallback_used,
+                        "fallback_policy": (
+                            error_policy if runner_fallback_used else None
+                        ),
                     },
+                    "agent_error_policy": error_policy,
                     "private_instruction_hash": _hash_text(private_instruction),
-                    "private_instruction": private_instruction
+                    "private_instruction": (
+                        private_instruction
                         if cfg.get("log_private_instructions", True)
-                        else None,
+                        else None
+                    ),
                     "observation": observation.to_dict(),
                     "legal_actions": [a.to_dict() for a in legal],
-                    "action": decision.action.to_dict(),
-                    "raw_response": decision.raw_response
+                    "action": executable_action.to_dict(),
+                    "raw_response": (
+                        decision.raw_response
                         if cfg.get("log_raw_model_responses", True)
-                        else None,
+                        else None
+                    ),
                     "researcher_true_state_before": true_state_before,
                     "outcome": result.outcome,
                     "probes": {},
@@ -122,17 +233,28 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                 turns.append(record)
 
             game_summary = summarize_game(turns, game.true_state())
-            game_summary.update({
-                "experiment": experiment,
-                "condition": condition_name,
-                "seed": seed,
-                "log_path": str(log_path),
-            })
+            game_summary.update(
+                {
+                    "experiment": experiment,
+                    "condition": condition_name,
+                    "seed": seed,
+                    "valid": not aborted,
+                    "aborted": aborted,
+                    "abort_reason": abort_reason,
+                    "agent_error_count": agent_error_count,
+                    "agent_error_policy": error_policy,
+                    "log_path": str(log_path),
+                }
+            )
             all_summaries.append(game_summary)
 
     by_condition: dict[str, Any] = {}
     for condition_name in conditions:
-        subset = [g for g in all_summaries if g["condition"] == condition_name]
+        subset = [
+            g
+            for g in all_summaries
+            if g["condition"] == condition_name
+        ]
         by_condition[condition_name] = aggregate_games(subset)
 
     summary = {
@@ -141,9 +263,13 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
         "num_players": num_players,
         "seeds": seeds,
         "conditions": conditions,
+        "agent_error_policy": error_policy,
         "games": all_summaries,
         "aggregate_by_condition": by_condition,
     }
     summary_path = output_root / "summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary, indent=2),
+        encoding="utf-8",
+    )
     return summary
