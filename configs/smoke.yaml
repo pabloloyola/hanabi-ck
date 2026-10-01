@@ -1,0 +1,25 @@
+experiment: smoke
+output_dir: runs
+
+num_players: 2
+seeds: [0, 1, 2, 3, 4]
+conditions:
+  - ck0
+  - ck1_private
+  - ck2_shared
+  - ck3_mutual
+  - ck_inf_common
+
+convention: >-
+  If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played
+  as soon as it is safe to do so.
+
+agents:
+  - type: simple
+    name: simple_A
+  - type: simple
+    name: simple_B
+
+log_private_instructions: true
+log_raw_model_responses: true
