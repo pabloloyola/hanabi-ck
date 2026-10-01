@@ -42,9 +42,10 @@ export OPENAI_API_KEY=lm-studio
 uv run hanabi-ck run configs/lmstudio.yaml
 ```
 
-The LLM is asked to return one legal Hanabi action as JSON. Invalid responses are
-logged and replaced by a deterministic fallback legal action so experiments do
-not silently terminate.
+The LLM is asked to return one legal Hanabi action as JSON. For research runs,
+the default `agent_error_policy: abort` means API failures, malformed JSON, and
+illegal actions are logged and the game is marked invalid **without executing a
+Hanabi action**. A `safe_baseline` policy is also available for debugging.
 
 ## Common-knowledge ladder
 
@@ -84,6 +85,31 @@ Each game writes one JSONL file. A turn record contains:
 - optional probe payloads
 
 A `summary.json` is also produced for each experiment.
+
+## Inspect a game
+
+Use the compact inspector to review exactly what each agent could see and what
+it did:
+
+```bash
+uv run hanabi-ck inspect runs/llm_debug/ck0/seed_000000.jsonl
+uv run hanabi-ck inspect runs/llm_debug/ck_inf_common/seed_000000.jsonl
+```
+
+Add `--true-state` to show researcher-only hidden cards, or `--raw` to print
+the raw model response.
+
+## First LLM debug run
+
+Edit `model: local-model` in `configs/llm_debug.yaml` to the model identifier
+served by LM Studio, then run:
+
+```bash
+uv run hanabi-ck run configs/llm_debug.yaml
+```
+
+This deliberately runs just one identical deck seed under `ck0` and
+`ck_inf_common` so the two traces can be inspected before scaling up.
 
 ## Suggested first experiment
 
@@ -129,6 +155,7 @@ src/hanabi_ck/
 
 configs/
   smoke.yaml
+  llm_debug.yaml
   lmstudio.yaml
 
 tests/
