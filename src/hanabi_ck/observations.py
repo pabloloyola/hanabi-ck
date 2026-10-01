@@ -38,6 +38,7 @@ class PlayerObservation:
     current_player: int
     other_hands: dict[int, list[dict[str, Any]]]
     own_knowledge: list[dict[str, Any]]
+    public_knowledge: dict[int, list[dict[str, Any]]]
     stacks: dict[str, int]
     discards: list[dict[str, Any]]
     information_tokens: int
@@ -52,6 +53,7 @@ class PlayerObservation:
             "current_player": self.current_player,
             "other_hands": self.other_hands,
             "own_knowledge": self.own_knowledge,
+            "public_knowledge": self.public_knowledge,
             "stacks": self.stacks,
             "discards": self.discards,
             "information_tokens": self.information_tokens,
