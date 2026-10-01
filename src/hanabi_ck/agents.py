@@ -15,7 +15,7 @@ from .observations import PlayerObservation
 
 @dataclass
 class AgentDecision:
-    action: Action
+    action: Action | None
     raw_response: str | None = None
     parse_error: str | None = None
     fallback_used: bool = False
@@ -339,8 +339,8 @@ Do not include explanation."""
             return AgentDecision(action=action, raw_response=raw)
         except Exception as exc:
             return AgentDecision(
-                action=legal_actions[0],
+                action=None,
                 raw_response=raw or None,
                 parse_error=f"{type(exc).__name__}: {exc}",
-                fallback_used=True,
+                fallback_used=False,
             )
