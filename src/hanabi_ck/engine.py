@@ -83,11 +83,16 @@ class HanabiGame:
             for p, hand in enumerate(self.hands)
             if p != player
         }
+        public_knowledge = {
+            p: [k.to_dict() for k in hand_knowledge]
+            for p, hand_knowledge in enumerate(self.knowledge)
+        }
         return PlayerObservation(
             player_id=player,
             current_player=self.current_player,
             other_hands=other_hands,
-            own_knowledge=[k.to_dict() for k in self.knowledge[player]],
+            own_knowledge=public_knowledge[player],
+            public_knowledge=public_knowledge,
             stacks=dict(self.stacks),
             discards=[c.to_dict() for c in self.discards],
             information_tokens=self.information_tokens,
