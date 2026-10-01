@@ -1,5 +1,5 @@
 from hanabi_ck.actions import Action
-from hanabi_ck.engine import HanabiGame, standard_deck
+from hanabi_ck.engine import Card, HanabiGame, standard_deck
 
 
 def test_standard_deck_has_50_cards():
@@ -54,3 +54,22 @@ def test_play_advances_turn():
     game.step(Action.play(0))
     if not game.done:
         assert game.current_player == 1
+
+
+def test_final_round_gives_every_player_one_more_turn_after_last_draw():
+    game = HanabiGame(num_players=2, seed=0)
+    game.deck = [Card("R", 1)]
+    game.final_turns_remaining = None
+    game.information_tokens = 7
+
+    game.step(Action.discard(0))
+    assert game.final_turns_remaining == 2
+    assert not game.done
+
+    game.step(Action.play(0))
+    assert game.final_turns_remaining == 1
+    assert not game.done
+
+    game.step(Action.play(0))
+    assert game.final_turns_remaining == 0
+    assert game.done
