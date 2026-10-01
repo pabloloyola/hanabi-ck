@@ -22,7 +22,7 @@ class Condition:
         num_players: int,
         convention: str = DEFAULT_CONVENTION,
     ) -> str:
-        del player_id, num_players
+        del num_players
 
         if self.name == "ck0":
             return (
@@ -31,17 +31,22 @@ class Condition:
             )
 
         if self.name == "ck1_private":
+            if player_id == 0:
+                return (
+                    f"Private experimental convention:\n{convention}\n\n"
+                    "You are not told whether any other player received this convention. "
+                    "Do not assume that they did."
+                )
             return (
-                f"Private experimental convention:\n{convention}\n\n"
-                "You are NOT told whether any other player received this convention. "
-                "Do not assume that they did."
+                "No extra team convention is supplied to you. Coordinate using only the "
+                "Hanabi rules and the observed game history."
             )
 
         if self.name == "ck2_shared":
             return (
                 f"Experimental convention:\n{convention}\n\n"
-                "Use this convention. You receive no explicit information about what the "
-                "other players were told."
+                "You were privately given this convention. You receive no explicit "
+                "information about whether the other players were given it."
             )
 
         if self.name == "ck3_mutual":
@@ -64,8 +69,8 @@ class Condition:
 
 CONDITIONS = {
     "ck0": Condition("ck0", "No supplied convention."),
-    "ck1_private": Condition("ck1_private", "Convention supplied privately."),
-    "ck2_shared": Condition("ck2_shared", "Convention supplied to all, no meta-information."),
+    "ck1_private": Condition("ck1_private", "Convention supplied only to player 0; no meta-information."),
+    "ck2_shared": Condition("ck2_shared", "Convention privately supplied to all; no meta-information."),
     "ck3_mutual": Condition("ck3_mutual", "Everyone is told everyone received it."),
     "ck_inf_common": Condition("ck_inf_common", "Convention explicitly declared common knowledge."),
 }
