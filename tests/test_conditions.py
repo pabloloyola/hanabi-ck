@@ -39,18 +39,18 @@ def test_ck1_can_counterbalance_private_convention_to_player_1():
     p0 = condition.private_instruction(
         player_id=0,
         num_players=2,
-        convention="C",
+        convention="PRIVATE_MARKER",
         informed_players={1},
     )
     p1 = condition.private_instruction(
         player_id=1,
         num_players=2,
-        convention="C",
+        convention="PRIVATE_MARKER",
         informed_players={1},
     )
 
-    assert "C" not in p0
-    assert "C" in p1
+    assert "PRIVATE_MARKER" not in p0
+    assert "PRIVATE_MARKER" in p1
 
 
 def test_ck1_informed_local_wording_matches_ck2_shared():
