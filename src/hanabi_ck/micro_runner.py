@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 import random
@@ -48,6 +49,79 @@ def _agent_spec_for_sample(
         extra_body["seed"] = sample_seed
         spec["extra_body"] = extra_body
     return spec
+
+
+def _payload_hash(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _paired_hash_comparison(
+    left_samples: list[dict[str, Any]],
+    right_samples: list[dict[str, Any]],
+    *,
+    field: str,
+    valid_field: str,
+    left_condition: str,
+    right_condition: str,
+) -> dict[str, Any]:
+    left_by_rep = {
+        int(sample["repetition"]): sample
+        for sample in left_samples
+        if sample.get(valid_field) and sample.get(field)
+    }
+    right_by_rep = {
+        int(sample["repetition"]): sample
+        for sample in right_samples
+        if sample.get(valid_field) and sample.get(field)
+    }
+    repetitions = sorted(set(left_by_rep).intersection(right_by_rep))
+    matches = sum(
+        left_by_rep[rep][field] == right_by_rep[rep][field]
+        for rep in repetitions
+    )
+    n = len(repetitions)
+    return {
+        "left_condition": left_condition,
+        "right_condition": right_condition,
+        "n_paired": n,
+        "hash_match_count": matches,
+        "hash_match_rate": matches / n if n else None,
+    }
+
+
+def _all_pairwise_hash_comparisons(
+    samples: list[dict[str, Any]],
+    conditions: list[str],
+    *,
+    field: str,
+    valid_field: str,
+) -> dict[str, Any]:
+    by_condition = {
+        condition: [
+            sample for sample in samples
+            if sample["condition"] == condition
+        ]
+        for condition in conditions
+    }
+    out: dict[str, Any] = {}
+    for left_index, left in enumerate(conditions):
+        for right in conditions[left_index + 1:]:
+            key = f"{left}__vs__{right}"
+            out[key] = _paired_hash_comparison(
+                by_condition[left],
+                by_condition[right],
+                field=field,
+                valid_field=valid_field,
+                left_condition=left,
+                right_condition=right,
+            )
+    return out
 
 
 def _wilson_interval(
@@ -239,7 +313,8 @@ def aggregate_micro_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
                 "probe_newest_rate": None,
                 "probe_newest_rate_ci95_wilson": None,
                 "action_matches_probe_rate": None,
-                "action_newest_given_probe_newest_rate": None,
+                "coindexed_action_newest_when_probe_newest_rate": None,
+                "recognition_behavior_gap": None,
                 "recognition_behavior_table": {},
             }
         )
@@ -364,12 +439,20 @@ def aggregate_micro_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
                 if probe_with_play
                 else None
             ),
-            "action_newest_given_probe_newest_rate": (
+            "coindexed_action_newest_when_probe_newest_rate": (
                 mean(
                     float(sample["selected_newest_target"])
                     for sample in probe_newest
                 )
                 if probe_newest
+                else None
+            ),
+            "recognition_behavior_gap": (
+                (
+                    probe_newest_count / len(probe_valid)
+                    - newest_count / len(valid)
+                )
+                if probe_valid
                 else None
             ),
             "recognition_behavior_table": recognition_behavior_table,
@@ -420,6 +503,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
     action_order_seed = int(cfg.get("action_order_seed", 100_000))
+    condition_order_seed = int(cfg.get("condition_order_seed", 200_000))
     shadow_probe = bool(cfg.get("shadow_intention_probe", False))
     probe_seed_offset = int(cfg.get("probe_seed_offset", 1_000_000))
     if shadow_probe and base_agent_spec.get("type") != "openai_compatible":
@@ -436,23 +520,31 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
     }
 
     all_samples: list[dict[str, Any]] = []
-
+    loggers: dict[str, JsonlLogger] = {}
     for condition_name in conditions:
-        condition = get_condition(condition_name)
         log_path = output_root / f"{condition_name}.jsonl"
         if log_path.exists():
             log_path.unlink()
-        logger = JsonlLogger(log_path)
+        loggers[condition_name] = JsonlLogger(log_path)
 
-        for repetition in range(repetitions):
-            sample_seed = sample_seed_start + repetition
-            legal_actions = _ordered_actions(
-                scenario,
-                repetition=repetition,
-                shuffle=shuffle_actions,
-                action_order_seed=action_order_seed,
-            )
-            target_action_index = legal_actions.index(scenario.target_action)
+    for repetition in range(repetitions):
+        sample_seed = sample_seed_start + repetition
+        legal_actions = _ordered_actions(
+            scenario,
+            repetition=repetition,
+            shuffle=shuffle_actions,
+            action_order_seed=action_order_seed,
+        )
+        target_action_index = legal_actions.index(scenario.target_action)
+
+        condition_order = list(conditions)
+        random.Random(
+            condition_order_seed + repetition
+        ).shuffle(condition_order)
+
+        for condition_order_index, condition_name in enumerate(condition_order):
+            condition = get_condition(condition_name)
+            logger = loggers[condition_name]
             agent_spec = _agent_spec_for_sample(
                 base_agent_spec,
                 sample_seed=sample_seed,
@@ -466,6 +558,16 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 convention=convention,
                 informed_players=ck1_informed_players,
             )
+
+            request_payload_hash: str | None = None
+            if isinstance(agent, OpenAICompatibleAgent):
+                request_payload_hash = _payload_hash(
+                    agent._request_payload(
+                        scenario.observation,
+                        legal_actions,
+                        private_instruction,
+                    )
+                )
 
             # Action is sampled first. The shadow probe is a separate stateless
             # request and is never included in the action prompt or future context.
@@ -516,6 +618,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             probe_raw_response: str | None = None
             probe_response_channel: str | None = None
             probe_api_response: dict[str, Any] | None = None
+            probe_request_payload_hash: str | None = None
             probe_seed: int | None = None
 
             if shadow_probe:
@@ -533,6 +636,14 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     raise RuntimeError(
                         "shadow probe requires OpenAICompatibleAgent"
                     )
+                probe_request_payload_hash = _payload_hash(
+                    probe_agent._intention_probe_payload(
+                        scenario.observation,
+                        private_instruction,
+                        scenario.trigger_hint,
+                        list(scenario.diagnostic_safe_card_indices),
+                    )
+                )
                 probe = probe_agent.probe_intended_card(
                     scenario.observation,
                     private_instruction,
@@ -562,6 +673,9 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "condition_description": condition.description,
                 "repetition": repetition,
                 "sample_seed": sample_seed,
+                "condition_order_seed": condition_order_seed + repetition,
+                "condition_order": condition_order,
+                "condition_order_index": condition_order_index,
                 "action_order_seed": action_order_seed + repetition,
                 "shuffle_legal_actions": shuffle_actions,
                 "vary_api_seed": vary_api_seed,
@@ -599,6 +713,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         error_policy if runner_fallback_used else None
                     ),
                 },
+                "request_payload_hash": request_payload_hash,
                 "model_action_index": decision.action_index,
                 "executed_action_index": executed_action_index,
                 "selected_action": (
@@ -626,6 +741,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "probe_enabled": shadow_probe,
                 "probe_seed": probe_seed,
+                "probe_request_payload_hash": probe_request_payload_hash,
                 "probe_valid": probe_valid,
                 "probe_error": probe_error,
                 "probe_intended_card_index": probe_intended_card_index,
@@ -672,6 +788,23 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         else {}
     )
 
+    request_hash_pairwise = _all_pairwise_hash_comparisons(
+        all_samples,
+        conditions,
+        field="request_payload_hash",
+        valid_field="valid",
+    )
+    probe_hash_pairwise = (
+        _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="probe_request_payload_hash",
+            valid_field="probe_valid",
+        )
+        if shadow_probe
+        else {}
+    )
+
     baseline = "ck0" if "ck0" in conditions else conditions[0]
     paired_action_vs_baseline = _comparisons_vs_baseline(
         action_pairwise,
@@ -698,6 +831,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "sample_seed_start": sample_seed_start,
         "shuffle_legal_actions": shuffle_actions,
         "action_order_seed": action_order_seed,
+        "condition_order_seed": condition_order_seed,
         "vary_api_seed": vary_api_seed,
         "shadow_intention_probe": shadow_probe,
         "probe_seed_offset": probe_seed_offset,
@@ -708,6 +842,8 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "paired_action_vs_baseline": paired_action_vs_baseline,
         "paired_probe_comparisons": probe_pairwise,
         "paired_probe_vs_baseline": paired_probe_vs_baseline,
+        "paired_request_hash_comparisons": request_hash_pairwise,
+        "paired_probe_hash_comparisons": probe_hash_pairwise,
         "samples": all_samples,
     }
     summary_path = output_root / "summary.json"
