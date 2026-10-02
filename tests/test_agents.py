@@ -103,7 +103,7 @@ def test_openai_compatible_agent_rejects_extra_body_reserved_collision():
         agent._request_payload(observation, legal, "test")
 
 
-def test_structured_output_schema_requires_complete_action_shape():
+def test_structured_output_schema_selects_only_legal_action_index():
     from hanabi_ck.agents import OpenAICompatibleAgent
 
     game = HanabiGame(num_players=2, seed=0)
@@ -119,13 +119,10 @@ def test_structured_output_schema_requires_complete_action_shape():
     schema = payload["response_format"]["json_schema"]["schema"]
 
     assert schema["additionalProperties"] is False
-    assert set(schema["required"]) == {
-        "type",
-        "card_index",
-        "target",
-        "attribute",
-        "value",
-    }
+    assert schema["required"] == ["action_index"]
+    assert schema["properties"]["action_index"]["enum"] == list(
+        range(len(legal))
+    )
 
 
 def test_select_response_text_prefers_content_then_reasoning_content():
@@ -151,3 +148,53 @@ def test_select_response_text_prefers_content_then_reasoning_content():
     )
     assert channel == "reasoning_content"
     assert "\"hint\"" in text
+
+
+def test_action_from_index_object_maps_exact_legal_action():
+    from hanabi_ck.agents import _action_from_index_object
+
+    game = HanabiGame(num_players=2, seed=0)
+    legal = game.legal_actions(0)
+
+    index, action = _action_from_index_object(
+        {"action_index": 3},
+        legal,
+    )
+
+    assert index == 3
+    assert action == legal[3]
+
+
+def test_action_from_index_object_rejects_extra_fields():
+    import pytest
+
+    from hanabi_ck.agents import _action_from_index_object
+
+    game = HanabiGame(num_players=2, seed=0)
+    legal = game.legal_actions(0)
+
+    with pytest.raises(ValueError, match="exactly one field"):
+        _action_from_index_object(
+            {"action_index": 0, "type": "play"},
+            legal,
+        )
+
+
+def test_llm_prompt_states_base_safety_and_hand_order():
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+    legal = game.legal_actions(0)
+
+    agent = OpenAICompatibleAgent(
+        name="qwen",
+        model="qwen/qwen3.8-27b",
+    )
+    messages = agent._prompt(observation, legal, "NO EXTRA CONVENTION")
+    system = messages[0]["content"]
+    user = messages[1]["content"]
+
+    assert "only play when every card identity" in system
+    assert "newest_card_index" in system
+    assert '"action_index": 0' in user
