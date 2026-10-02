@@ -60,6 +60,12 @@ def main() -> None:
                     "paired_probe_vs_baseline": (
                         summary["paired_probe_vs_baseline"]
                     ),
+                    "paired_request_hash_comparisons": (
+                        summary["paired_request_hash_comparisons"]
+                    ),
+                    "paired_probe_hash_comparisons": (
+                        summary["paired_probe_hash_comparisons"]
+                    ),
                 },
                 indent=2,
             )
