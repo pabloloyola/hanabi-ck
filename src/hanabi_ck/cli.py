@@ -5,6 +5,7 @@ import json
 
 from .inspection import inspect_log
 from .micro_runner import run_micro_experiment
+from .pair_micro_runner import run_pair_micro_experiment
 from .runner import run_experiment
 
 
@@ -20,6 +21,12 @@ def main() -> None:
         help="Run a repeated one-step micro-Hanabi diagnostic",
     )
     micro.add_argument("config")
+
+    micro_pair = sub.add_parser(
+        "micro-pair",
+        help="Run a two-agent sender-to-receiver micro diagnostic",
+    )
+    micro_pair.add_argument("config")
 
     inspect = sub.add_parser(
         "inspect",
@@ -65,6 +72,19 @@ def main() -> None:
                     ),
                     "paired_probe_hash_comparisons": (
                         summary["paired_probe_hash_comparisons"]
+                    ),
+                },
+                indent=2,
+            )
+        )
+    elif args.command == "micro-pair":
+        summary = run_pair_micro_experiment(args.config)
+        print(
+            json.dumps(
+                {
+                    "aggregate_by_condition": summary["aggregate_by_condition"],
+                    "paired_receiver_vs_baseline": (
+                        summary["paired_receiver_vs_baseline"]
                     ),
                 },
                 indent=2,
