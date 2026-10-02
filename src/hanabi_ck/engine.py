@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from .actions import Action
-from .observations import COLORS, CardKnowledge, PlayerObservation
+from .observations import (
+    COLORS,
+    CardKnowledge,
+    PlayerObservation,
+    play_safety_annotations,
+)
 
 
 @dataclass(frozen=True)
@@ -91,6 +96,12 @@ class HanabiGame:
             p: (len(hand) - 1 if hand else None)
             for p, hand in enumerate(self.hands)
         }
+        provably_playable, provably_obsolete, play_safety = (
+            play_safety_annotations(
+                public_knowledge[player],
+                self.stacks,
+            )
+        )
         return PlayerObservation(
             player_id=player,
             current_player=self.current_player,
@@ -99,6 +110,9 @@ class HanabiGame:
             public_knowledge=public_knowledge,
             hand_order="oldest_to_newest",
             newest_card_index=newest_card_index,
+            provably_playable_indices=provably_playable,
+            provably_obsolete_indices=provably_obsolete,
+            play_safety=play_safety,
             stacks=dict(self.stacks),
             discards=[c.to_dict() for c in self.discards],
             information_tokens=self.information_tokens,
