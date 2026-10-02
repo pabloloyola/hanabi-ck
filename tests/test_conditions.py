@@ -31,3 +31,40 @@ def test_ck1_is_asymmetric():
     )
     assert "SECRET CONVENTION" in p0
     assert "SECRET CONVENTION" not in p1
+
+
+def test_ck1_can_counterbalance_private_convention_to_player_1():
+    condition = get_condition("ck1_private")
+
+    p0 = condition.private_instruction(
+        player_id=0,
+        num_players=2,
+        convention="C",
+        informed_players={1},
+    )
+    p1 = condition.private_instruction(
+        player_id=1,
+        num_players=2,
+        convention="C",
+        informed_players={1},
+    )
+
+    assert "C" not in p0
+    assert "C" in p1
+
+
+def test_ck1_informed_local_wording_matches_ck2_shared():
+    convention = "SAME C"
+    ck1 = get_condition("ck1_private").private_instruction(
+        player_id=1,
+        num_players=2,
+        convention=convention,
+        informed_players={1},
+    )
+    ck2 = get_condition("ck2_shared").private_instruction(
+        player_id=1,
+        num_players=2,
+        convention=convention,
+    )
+
+    assert ck1 == ck2
