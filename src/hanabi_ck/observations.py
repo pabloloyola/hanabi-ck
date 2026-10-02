@@ -8,6 +8,55 @@ COLORS = ("R", "G", "B", "Y", "W")
 RANKS = (1, 2, 3, 4, 5)
 
 
+def is_provably_playable(
+    knowledge: dict[str, Any],
+    stacks: dict[str, int],
+) -> bool:
+    """True iff every card identity consistent with knowledge is playable."""
+    colors = knowledge["possible_colors"]
+    ranks = knowledge["possible_ranks"]
+    return bool(colors and ranks) and all(
+        stacks[color] + 1 == rank
+        for color in colors
+        for rank in ranks
+    )
+
+
+def is_provably_obsolete(
+    knowledge: dict[str, Any],
+    stacks: dict[str, int],
+) -> bool:
+    """True iff every card identity consistent with knowledge is already played."""
+    colors = knowledge["possible_colors"]
+    ranks = knowledge["possible_ranks"]
+    return bool(colors and ranks) and all(
+        rank <= stacks[color]
+        for color in colors
+        for rank in ranks
+    )
+
+
+def play_safety_annotations(
+    own_knowledge: list[dict[str, Any]],
+    stacks: dict[str, int],
+) -> tuple[list[int], list[int], dict[int, str]]:
+    playable: list[int] = []
+    obsolete: list[int] = []
+    status: dict[int, str] = {}
+
+    for index, knowledge in enumerate(own_knowledge):
+        if is_provably_playable(knowledge, stacks):
+            playable.append(index)
+            status[index] = "provably_safe"
+        elif is_provably_obsolete(knowledge, stacks):
+            obsolete.append(index)
+            status[index] = "provably_obsolete"
+        else:
+            status[index] = "not_proven_safe"
+
+    return playable, obsolete, status
+
+
 @dataclass
 class CardKnowledge:
     possible_colors: set[str] = field(default_factory=lambda: set(COLORS))
@@ -41,6 +90,9 @@ class PlayerObservation:
     public_knowledge: dict[int, list[dict[str, Any]]]
     hand_order: str
     newest_card_index: dict[int, int | None]
+    provably_playable_indices: list[int]
+    provably_obsolete_indices: list[int]
+    play_safety: dict[int, str]
     stacks: dict[str, int]
     discards: list[dict[str, Any]]
     information_tokens: int
@@ -58,6 +110,9 @@ class PlayerObservation:
             "public_knowledge": self.public_knowledge,
             "hand_order": self.hand_order,
             "newest_card_index": self.newest_card_index,
+            "provably_playable_indices": self.provably_playable_indices,
+            "provably_obsolete_indices": self.provably_obsolete_indices,
+            "play_safety": self.play_safety,
             "stacks": self.stacks,
             "discards": self.discards,
             "information_tokens": self.information_tokens,
