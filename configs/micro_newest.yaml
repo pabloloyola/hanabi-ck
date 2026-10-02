@@ -28,6 +28,10 @@ probe_seed_offset: 1000000
 shuffle_legal_actions: true
 action_order_seed: 20261002
 
+# Randomize the order in which CK conditions are executed inside each
+# repetition, so condition is not confounded with wall-clock/server drift.
+condition_order_seed: 20261003
+
 convention: >-
   If a player gives a rank hint that touches the receiver's newest card,
   the receiver should interpret that newest card as intended to be played
