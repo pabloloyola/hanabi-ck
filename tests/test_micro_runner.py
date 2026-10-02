@@ -1,8 +1,10 @@
 from hanabi_ck.actions import Action
 from hanabi_ck.micro_runner import (
     _agent_spec_for_sample,
+    _all_pairwise_hash_comparisons,
     _ordered_actions,
     _paired_binary_comparison,
+    _payload_hash,
     _wilson_interval,
     aggregate_micro_samples,
     run_micro_experiment,
@@ -199,10 +201,58 @@ def test_micro_aggregation_includes_shadow_probe_recognition_behavior():
     assert result["probe_valid_count"] == 2
     assert result["probe_newest_rate"] == 1.0
     assert result["action_matches_probe_rate"] == 0.5
-    assert result["action_newest_given_probe_newest_rate"] == 0.5
+    assert result["coindexed_action_newest_when_probe_newest_rate"] == 0.5
+    assert result["recognition_behavior_gap"] == 0.5
     assert result["recognition_behavior_table"] == {
         "both_newest": 1,
         "probe_newest_action_not": 1,
         "action_newest_probe_not": 0,
         "neither_newest": 0,
     }
+
+
+def test_payload_hash_is_stable_for_key_order():
+    left = {"b": 2, "a": {"y": 2, "x": 1}}
+    right = {"a": {"x": 1, "y": 2}, "b": 2}
+
+    assert _payload_hash(left) == _payload_hash(right)
+
+
+def test_pairwise_hash_comparison_detects_identical_requests():
+    samples = [
+        {
+            "condition": "ck1_private",
+            "repetition": 0,
+            "valid": True,
+            "request_payload_hash": "same",
+        },
+        {
+            "condition": "ck2_shared",
+            "repetition": 0,
+            "valid": True,
+            "request_payload_hash": "same",
+        },
+        {
+            "condition": "ck1_private",
+            "repetition": 1,
+            "valid": True,
+            "request_payload_hash": "left",
+        },
+        {
+            "condition": "ck2_shared",
+            "repetition": 1,
+            "valid": True,
+            "request_payload_hash": "right",
+        },
+    ]
+
+    result = _all_pairwise_hash_comparisons(
+        samples,
+        ["ck1_private", "ck2_shared"],
+        field="request_payload_hash",
+        valid_field="valid",
+    )["ck1_private__vs__ck2_shared"]
+
+    assert result["n_paired"] == 2
+    assert result["hash_match_count"] == 1
+    assert result["hash_match_rate"] == 0.5
