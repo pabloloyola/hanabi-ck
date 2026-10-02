@@ -2,6 +2,8 @@ from hanabi_ck.actions import Action
 from hanabi_ck.micro_runner import (
     _agent_spec_for_sample,
     _ordered_actions,
+    _paired_binary_comparison,
+    _wilson_interval,
     aggregate_micro_samples,
     run_micro_experiment,
 )
@@ -121,3 +123,86 @@ def test_run_micro_experiment_with_simple_agent(tmp_path):
         )
         assert log_path.exists()
         assert len(log_path.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_wilson_interval_contains_observed_rate():
+    interval = _wilson_interval(6, 20)
+
+    assert interval is not None
+    assert interval[0] < 0.3 < interval[1]
+    assert 0.0 <= interval[0] <= interval[1] <= 1.0
+
+
+def test_paired_comparison_counts_directional_switches():
+    left = [
+        {"repetition": 0, "valid": True, "selected_newest_target": False},
+        {"repetition": 1, "valid": True, "selected_newest_target": True},
+        {"repetition": 2, "valid": True, "selected_newest_target": False},
+        {"repetition": 3, "valid": True, "selected_newest_target": False},
+    ]
+    right = [
+        {"repetition": 0, "valid": True, "selected_newest_target": True},
+        {"repetition": 1, "valid": True, "selected_newest_target": True},
+        {"repetition": 2, "valid": True, "selected_newest_target": False},
+        {"repetition": 3, "valid": True, "selected_newest_target": True},
+    ]
+
+    result = _paired_binary_comparison(
+        left,
+        right,
+        field="selected_newest_target",
+        valid_field="valid",
+        left_condition="ck0",
+        right_condition="ck3_mutual",
+    )
+
+    assert result["n_paired"] == 4
+    assert result["both_positive"] == 1
+    assert result["neither_positive"] == 1
+    assert result["left_only"] == 0
+    assert result["right_only"] == 2
+    assert result["delta_right_minus_left"] == 0.5
+
+
+def test_micro_aggregation_includes_shadow_probe_recognition_behavior():
+    samples = [
+        {
+            "valid": True,
+            "agent_error": False,
+            "selected_action": Action.play(4).to_dict(),
+            "selected_card_index": 4,
+            "selected_newest_target": True,
+            "selected_safe_candidate_play": True,
+            "selected_epistemically_safe_play": True,
+            "probe_enabled": True,
+            "probe_valid": True,
+            "probe_inferred_newest_target": True,
+            "probe_intended_card_index": 4,
+        },
+        {
+            "valid": True,
+            "agent_error": False,
+            "selected_action": Action.play(1).to_dict(),
+            "selected_card_index": 1,
+            "selected_newest_target": False,
+            "selected_safe_candidate_play": True,
+            "selected_epistemically_safe_play": True,
+            "probe_enabled": True,
+            "probe_valid": True,
+            "probe_inferred_newest_target": True,
+            "probe_intended_card_index": 4,
+        },
+    ]
+
+    result = aggregate_micro_samples(samples)
+
+    assert result["probe_valid_count"] == 2
+    assert result["probe_newest_rate"] == 1.0
+    assert result["action_matches_probe_rate"] == 0.5
+    assert result["action_newest_given_probe_newest_rate"] == 0.5
+    assert result["recognition_behavior_table"] == {
+        "both_newest": 1,
+        "probe_newest_action_not": 1,
+        "action_newest_probe_not": 0,
+        "neither_newest": 0,
+    }
