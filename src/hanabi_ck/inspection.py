@@ -146,6 +146,17 @@ def inspect_log(
             f"deck={observation['deck_size']}"
         )
 
+        if observation.get("hand_order"):
+            print(f"  hand_order: {observation['hand_order']}")
+        if observation.get("newest_card_index") is not None:
+            print(
+                "  newest_card_index: "
+                + json.dumps(
+                    observation["newest_card_index"],
+                    sort_keys=True,
+                )
+            )
+
         for other_player, cards in observation["other_hands"].items():
             print(f"  sees P{other_player}: {_hand(cards)}")
 
@@ -171,6 +182,10 @@ def inspect_log(
         if agent.get("response_channel"):
             print(
                 f"  response_channel: {agent['response_channel']}"
+            )
+        if record.get("executed_action_index") is not None:
+            print(
+                f"  action_index: {record['executed_action_index']}"
             )
         print(f"  action: {_action(record['action'])}")
         print(f"  outcome: {_outcome(record)}")
