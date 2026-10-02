@@ -126,3 +126,28 @@ def test_structured_output_schema_requires_complete_action_shape():
         "attribute",
         "value",
     }
+
+
+def test_select_response_text_prefers_content_then_reasoning_content():
+    from hanabi_ck.agents import _select_response_text
+
+    text, channel = _select_response_text(
+        {
+            "content": "{\"type\":\"play\",\"card_index\":0}",
+            "reasoning_content": "{\"type\":\"discard\",\"card_index\":1}",
+        }
+    )
+    assert channel == "content"
+    assert "\"play\"" in text
+
+    text, channel = _select_response_text(
+        {
+            "content": "",
+            "reasoning_content": (
+                "{\"type\":\"hint\",\"target\":1,"
+                "\"attribute\":\"color\",\"value\":\"R\"}"
+            ),
+        }
+    )
+    assert channel == "reasoning_content"
+    assert "\"hint\"" in text
