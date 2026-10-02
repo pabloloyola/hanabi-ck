@@ -194,6 +194,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                                 else None
                             ),
                             "researcher_true_state_before": game.true_state(),
+                            "model_action_index": decision.action_index,
+                            "executed_action_index": None,
                             "action": None,
                             "outcome": None,
                             "probes": {},
@@ -202,6 +204,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     break
 
                 true_state_before = game.true_state()
+                executed_action_index = legal.index(executable_action)
                 result = game.step(executable_action)
 
                 record = {
@@ -233,6 +236,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     ),
                     "observation": observation.to_dict(),
                     "legal_actions": [a.to_dict() for a in legal],
+                    "model_action_index": decision.action_index,
+                    "executed_action_index": executed_action_index,
                     "action": executable_action.to_dict(),
                     "raw_response": (
                         decision.raw_response
