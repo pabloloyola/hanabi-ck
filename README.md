@@ -62,6 +62,23 @@ A play can happen to succeed while still being epistemically unsafe. Summaries
 therefore include `epistemically_unsafe_plays`, `successful_unsafe_plays`,
 and `unsafe_play_rate`.
 
+
+## Illustrated LaTeX guide
+
+A self-contained illustrated overview of the research question, harness design,
+failure modes, micro-scenarios, current results, and next experiments lives at:
+
+`docs/hanabi_ck_harness_guide.tex`
+
+Build it with:
+
+```bash
+latexmk -pdf docs/hanabi_ck_harness_guide.tex
+```
+
+The figures and result chart are drawn directly in LaTeX with TikZ/PGFPlots, so
+the guide does not depend on external image assets.
+
 ## Micro-Hanabi diagnostic
 
 Before interpreting full-game score differences, use the one-step diagnostic:
