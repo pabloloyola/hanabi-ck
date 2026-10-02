@@ -164,6 +164,18 @@ def inspect_log(
             "  own knowledge: "
             + _knowledge_row(observation["own_knowledge"])
         )
+        print(
+            "  provably playable: "
+            + json.dumps(
+                observation.get("provably_playable_indices", [])
+            )
+        )
+        print(
+            "  provably obsolete: "
+            + json.dumps(
+                observation.get("provably_obsolete_indices", [])
+            )
+        )
 
         for other_player, knowledge in observation["public_knowledge"].items():
             if int(other_player) == int(player):
@@ -188,6 +200,15 @@ def inspect_log(
                 f"  action_index: {record['executed_action_index']}"
             )
         print(f"  action: {_action(record['action'])}")
+        if record["action"]["type"] == "play":
+            print(
+                "  epistemic_play_status: "
+                f"{record.get('epistemic_play_status')}"
+            )
+            print(
+                "  epistemically_safe_play: "
+                f"{record.get('epistemically_safe_play')}"
+            )
         print(f"  outcome: {_outcome(record)}")
 
         if agent.get("response_error"):
