@@ -120,6 +120,26 @@ Micro logs are written to:
 runs/<experiment>/micro/<scenario>/<condition>.jsonl
 ```
 
+
+### Two-agent sender → receiver diagnostic
+
+The next step tests both convention **encoding** and **decoding**:
+
+```bash
+uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
+```
+
+P0 is given a fixed communication goal: use exactly one legal Hanabi hint to
+communicate that P1 should play newest card 4. P1 then receives the observation
+produced by that actual hint and chooses an action. The pair runner reports the
+sender's convention-triggering rank-hint rate, the receiver's newest-card rate,
+and receiver success conditional on the sender using the convention-triggering
+hint.
+
+For CK1 in this pair experiment, only the sender is informed
+(`ck1_informed_players: [0]`). This creates the useful asymmetric case where
+the sender may encode with a convention that the receiver cannot assume.
+
 ## Common-knowledge ladder
 
 The initial conditions are:
@@ -237,6 +257,7 @@ configs/
   llm_debug.yaml
   lmstudio.yaml
   micro_newest.yaml
+  micro_pair_newest.yaml
 
 tests/
   test_engine.py
