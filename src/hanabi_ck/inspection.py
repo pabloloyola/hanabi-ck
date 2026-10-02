@@ -116,8 +116,18 @@ def inspect_log(
                 f"TURN {turn:02d}  P{player}  {model}  AGENT ERROR"
             )
             print(f"  error: {agent.get('error')}")
-            if show_raw and record.get("raw_response"):
-                print(f"  raw: {record['raw_response']}")
+            if show_raw:
+                if record.get("raw_response"):
+                    print(f"  raw: {record['raw_response']}")
+                if record.get("api_response"):
+                    print(
+                        "  api_response: "
+                        + json.dumps(
+                            record["api_response"],
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                    )
             print("  game aborted; no Hanabi action executed")
             print()
             continue
@@ -164,6 +174,16 @@ def inspect_log(
                 "  FALLBACK: "
                 f"{agent.get('fallback_policy', 'unknown')}"
             )
-        if show_raw and record.get("raw_response"):
-            print(f"  raw: {record['raw_response']}")
+        if show_raw:
+            if record.get("raw_response"):
+                print(f"  raw: {record['raw_response']}")
+            if record.get("api_response"):
+                print(
+                    "  api_response: "
+                    + json.dumps(
+                        record["api_response"],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
         print()
