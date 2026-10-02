@@ -24,6 +24,15 @@ class AgentDecision:
     fallback_used: bool = False
 
 
+@dataclass
+class IntentionProbeDecision:
+    intended_card_index: int | None
+    raw_response: str | None = None
+    response_channel: str | None = None
+    api_response: dict[str, Any] | None = None
+    parse_error: str | None = None
+
+
 class Agent(Protocol):
     name: str
 
@@ -417,6 +426,150 @@ Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
         # "extra_body" key.
         payload.update(self.extra_body)
         return payload
+
+    def _intention_probe_prompt(
+        self,
+        observation: PlayerObservation,
+        private_instruction: str,
+        trigger_hint: dict[str, Any],
+        candidate_card_indices: list[int],
+    ) -> list[dict[str, str]]:
+        system = """You are a shadow epistemic probe for a Hanabi experiment.
+Infer which candidate card index the partner intended with the immediately
+preceding hint. Do not choose a Hanabi action and do not explain your answer.
+Use only the supplied observation, public history, and experimental instruction.
+Return ONLY JSON of the form {"intended_card_index": N}."""
+        user = {
+            "private_experimental_instruction": private_instruction,
+            "observation": observation.to_dict(),
+            "trigger_hint": trigger_hint,
+            "candidate_card_indices": candidate_card_indices,
+        }
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+        ]
+
+    def _intention_probe_payload(
+        self,
+        observation: PlayerObservation,
+        private_instruction: str,
+        trigger_hint: dict[str, Any],
+        candidate_card_indices: list[int],
+    ) -> dict[str, Any]:
+        if not candidate_card_indices:
+            raise ValueError("candidate_card_indices must be non-empty")
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": self._intention_probe_prompt(
+                observation,
+                private_instruction,
+                trigger_hint,
+                candidate_card_indices,
+            ),
+            "temperature": self.temperature,
+        }
+        if self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
+
+        if self.structured_output:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "hanabi_intention_probe",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "intended_card_index": {
+                                "type": "integer",
+                                "enum": candidate_card_indices,
+                            }
+                        },
+                        "required": ["intended_card_index"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+
+        reserved = {
+            "model",
+            "messages",
+            "temperature",
+            "max_tokens",
+            "response_format",
+        }
+        collisions = reserved.intersection(self.extra_body)
+        if collisions:
+            names = ", ".join(sorted(collisions))
+            raise ValueError(
+                f"extra_body cannot override reserved request fields: {names}"
+            )
+
+        payload.update(self.extra_body)
+        return payload
+
+    def probe_intended_card(
+        self,
+        observation: PlayerObservation,
+        private_instruction: str,
+        trigger_hint: dict[str, Any],
+        candidate_card_indices: list[int],
+    ) -> IntentionProbeDecision:
+        raw = ""
+        data: dict[str, Any] | None = None
+        try:
+            payload = self._intention_probe_payload(
+                observation,
+                private_instruction,
+                trigger_hint,
+                candidate_card_indices,
+            )
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            with httpx.Client(timeout=self.timeout_s) as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            message = data["choices"][0]["message"]
+            raw, response_channel = _select_response_text(message)
+            parsed = _extract_json_object(raw)
+
+            if set(parsed) != {"intended_card_index"}:
+                raise ValueError(
+                    "Probe response must contain exactly intended_card_index"
+                )
+            intended = parsed["intended_card_index"]
+            if isinstance(intended, bool) or not isinstance(intended, int):
+                raise ValueError("intended_card_index must be an integer")
+            if intended not in candidate_card_indices:
+                raise ValueError(
+                    f"intended_card_index {intended} is not a candidate"
+                )
+
+            return IntentionProbeDecision(
+                intended_card_index=intended,
+                raw_response=raw,
+                response_channel=response_channel,
+                api_response=data,
+            )
+        except Exception as exc:
+            return IntentionProbeDecision(
+                intended_card_index=None,
+                raw_response=raw or None,
+                response_channel=(
+                    response_channel
+                    if "response_channel" in locals()
+                    else None
+                ),
+                api_response=data,
+                parse_error=f"{type(exc).__name__}: {exc}",
+            )
 
     def act(
         self,
