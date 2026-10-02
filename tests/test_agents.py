@@ -201,3 +201,34 @@ def test_llm_prompt_states_base_safety_and_hand_order():
     assert "newest_card_index" in system
     assert '"legal_actions"' in user
     assert '"output_example"' not in user
+
+
+def test_intention_probe_payload_constrains_candidate_card_indices():
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+
+    agent = OpenAICompatibleAgent(
+        name="qwen",
+        model="qwen/qwen3.8-27b",
+        structured_output=True,
+    )
+    payload = agent._intention_probe_payload(
+        observation,
+        "TEST CONVENTION",
+        {
+            "actor": 1,
+            "target": 0,
+            "attribute": "rank",
+            "value": 1,
+            "touched_indices": [1, 2, 4],
+        },
+        [1, 2, 4],
+    )
+
+    schema = payload["response_format"]["json_schema"]["schema"]
+    assert schema["required"] == ["intended_card_index"]
+    assert schema["properties"]["intended_card_index"]["enum"] == [1, 2, 4]
+    assert schema["additionalProperties"] is False
+    assert "legal_actions" not in payload["messages"][1]["content"]
