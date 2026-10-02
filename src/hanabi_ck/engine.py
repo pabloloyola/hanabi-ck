@@ -87,12 +87,18 @@ class HanabiGame:
             p: [k.to_dict() for k in hand_knowledge]
             for p, hand_knowledge in enumerate(self.knowledge)
         }
+        newest_card_index = {
+            p: (len(hand) - 1 if hand else None)
+            for p, hand in enumerate(self.hands)
+        }
         return PlayerObservation(
             player_id=player,
             current_player=self.current_player,
             other_hands=other_hands,
             own_knowledge=public_knowledge[player],
             public_knowledge=public_knowledge,
+            hand_order="oldest_to_newest",
+            newest_card_index=newest_card_index,
             stacks=dict(self.stacks),
             discards=[c.to_dict() for c in self.discards],
             information_tokens=self.information_tokens,
