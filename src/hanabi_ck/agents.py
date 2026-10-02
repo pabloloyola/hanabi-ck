@@ -17,6 +17,7 @@ from .observations import PlayerObservation
 class AgentDecision:
     action: Action | None
     raw_response: str | None = None
+    api_response: dict[str, Any] | None = None
     parse_error: str | None = None
     fallback_used: bool = False
 
@@ -265,6 +266,7 @@ class OpenAICompatibleAgent:
         timeout_s: float = 60.0,
         max_tokens: int | None = None,
         extra_body: dict[str, Any] | None = None,
+        structured_output: bool = False,
     ):
         self.name = name
         self.model = model
@@ -277,6 +279,7 @@ class OpenAICompatibleAgent:
         self.timeout_s = timeout_s
         self.max_tokens = max_tokens
         self.extra_body = dict(extra_body or {})
+        self.structured_output = structured_output
 
     def _prompt(
         self,
@@ -324,7 +327,67 @@ Do not include explanation."""
         if self.max_tokens is not None:
             payload["max_tokens"] = self.max_tokens
 
-        reserved = {"model", "messages", "temperature", "max_tokens"}
+        if self.structured_output:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "hanabi_action",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["play", "discard", "hint"],
+                            },
+                            "card_index": {
+                                "anyOf": [
+                                    {"type": "integer", "minimum": 0},
+                                    {"type": "null"},
+                                ]
+                            },
+                            "target": {
+                                "anyOf": [
+                                    {"type": "integer", "minimum": 0},
+                                    {"type": "null"},
+                                ]
+                            },
+                            "attribute": {
+                                "anyOf": [
+                                    {
+                                        "type": "string",
+                                        "enum": ["color", "rank"],
+                                    },
+                                    {"type": "null"},
+                                ]
+                            },
+                            "value": {
+                                "anyOf": [
+                                    {"type": "integer"},
+                                    {"type": "string"},
+                                    {"type": "null"},
+                                ]
+                            },
+                        },
+                        "required": [
+                            "type",
+                            "card_index",
+                            "target",
+                            "attribute",
+                            "value",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+
+        reserved = {
+            "model",
+            "messages",
+            "temperature",
+            "max_tokens",
+            "response_format",
+        }
         collisions = reserved.intersection(self.extra_body)
         if collisions:
             names = ", ".join(sorted(collisions))
@@ -352,6 +415,7 @@ Do not include explanation."""
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
         raw = ""
+        data: dict[str, Any] | None = None
         try:
             with httpx.Client(timeout=self.timeout_s) as client:
                 response = client.post(
@@ -361,18 +425,27 @@ Do not include explanation."""
                 )
                 response.raise_for_status()
                 data = response.json()
-            raw = data["choices"][0]["message"]["content"]
+
+            message = data["choices"][0]["message"]
+            content = message.get("content")
+            raw = content if isinstance(content, str) else ""
+
             parsed = _extract_json_object(raw)
             action = Action.from_dict(parsed)
             if action not in legal_actions:
                 raise ValueError(
                     f"Model returned illegal action: {action.to_dict()}"
                 )
-            return AgentDecision(action=action, raw_response=raw)
+            return AgentDecision(
+                action=action,
+                raw_response=raw,
+                api_response=data,
+            )
         except Exception as exc:
             return AgentDecision(
                 action=None,
                 raw_response=raw or None,
+                api_response=data,
                 parse_error=f"{type(exc).__name__}: {exc}",
                 fallback_used=False,
             )
