@@ -329,11 +329,15 @@ BASE HANABI SEMANTICS:
 - A play succeeds only when rank == stacks[color] + 1.
 - If rank <= stacks[color], that card is already obsolete and playing it is a misplay.
 - A normal hint reveals information; it is not automatically a command to play.
-- Without an applicable experimental convention, only play when every card identity
-  consistent with your current knowledge is playable.
-- An experimental convention may add pragmatic information. Use it only when the
-  supplied private_experimental_instruction actually makes it applicable.
-- If a play is not sufficiently justified, prefer a legal hint or discard instead.
+- provably_playable_indices is computed only from your legal hint-derived knowledge
+  and the public stacks. A normal play should use only an index in that list.
+- provably_obsolete_indices contains cards that are certainly already played and
+  should not be played.
+- An experimental convention can tell you which card is intended, but intention
+  does not make an unsafe card safe. If the convention says to play a card "as soon
+  as it is safe", wait until that card is in provably_playable_indices.
+- If no card is provably playable, prefer a legal hint or discard rather than an
+  unjustified play.
 - hand_order is oldest_to_newest. newest_card_index gives the newest current slot
   for every player.
 
