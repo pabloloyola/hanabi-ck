@@ -169,6 +169,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                                 "type": agent_specs[p]["type"],
                                 "model": agent_specs[p].get("model"),
                                 "response_error": True,
+                                "response_channel": decision.response_channel,
                                 "error": abort_reason,
                             },
                             "agent_error_policy": error_policy,
@@ -216,6 +217,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                         "type": agent_specs[p]["type"],
                         "model": agent_specs[p].get("model"),
                         "response_error": decision.parse_error is not None,
+                        "response_channel": decision.response_channel,
                         "error": decision.parse_error,
                         "fallback_used": runner_fallback_used,
                         "fallback_policy": (
