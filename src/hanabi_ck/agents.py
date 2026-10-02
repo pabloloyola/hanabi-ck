@@ -354,7 +354,6 @@ Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
                 }
                 for index, action in enumerate(legal_actions)
             ],
-            "output_example": {"action_index": 0},
         }
         return [
             {"role": "system", "content": system},
