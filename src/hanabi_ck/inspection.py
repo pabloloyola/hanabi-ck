@@ -116,6 +116,10 @@ def inspect_log(
                 f"TURN {turn:02d}  P{player}  {model}  AGENT ERROR"
             )
             print(f"  error: {agent.get('error')}")
+            if agent.get("response_channel"):
+                print(
+                    f"  response_channel: {agent['response_channel']}"
+                )
             if show_raw:
                 if record.get("raw_response"):
                     print(f"  raw: {record['raw_response']}")
@@ -164,6 +168,10 @@ def inspect_log(
                 f"  TRUE own hand: {_hand(true_hands[int(player)])}"
             )
 
+        if agent.get("response_channel"):
+            print(
+                f"  response_channel: {agent['response_channel']}"
+            )
         print(f"  action: {_action(record['action'])}")
         print(f"  outcome: {_outcome(record)}")
 
