@@ -195,6 +195,8 @@ def test_llm_prompt_states_base_safety_and_hand_order():
     system = messages[0]["content"]
     user = messages[1]["content"]
 
-    assert "only play when every card identity" in system
+    assert "provably_playable_indices" in system
+    assert "intention" in system
+    assert "does not make an unsafe card safe" in system
     assert "newest_card_index" in system
     assert '"action_index": 0' in user
