@@ -37,6 +37,12 @@ def _build_agent(spec: dict[str, Any], *, seed: int):
             api_key=spec.get("api_key"),
             temperature=float(spec.get("temperature", 0.0)),
             timeout_s=float(spec.get("timeout_s", 60.0)),
+            max_tokens=(
+                int(spec["max_tokens"])
+                if spec.get("max_tokens") is not None
+                else None
+            ),
+            extra_body=dict(spec.get("extra_body") or {}),
         )
     raise ValueError(f"Unknown agent type: {typ}")
 
