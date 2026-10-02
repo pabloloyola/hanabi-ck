@@ -3,6 +3,7 @@ from hanabi_ck.micro_runner import (
     _agent_spec_for_sample,
     _ordered_actions,
     aggregate_micro_samples,
+    run_micro_experiment,
 )
 from hanabi_ck.micro_scenarios import get_micro_scenario
 
@@ -77,3 +78,46 @@ def test_micro_sample_seed_overrides_only_api_seed():
         "enable_thinking": False
     }
     assert spec["extra_body"]["seed"] == 999
+
+
+def test_run_micro_experiment_with_simple_agent(tmp_path):
+    config = tmp_path / "micro.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "experiment: micro_test",
+                f"output_dir: {tmp_path.as_posix()}",
+                "scenario: newest_rank1_three_safe",
+                "conditions: [ck0, ck_inf_common]",
+                "repetitions: 2",
+                "shuffle_legal_actions: true",
+                "action_order_seed: 7",
+                "ck1_informed_players: [1]",
+                "agent:",
+                "  type: simple",
+                "  name: baseline",
+                "agent_error_policy: abort",
+                "log_raw_model_responses: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    summary = run_micro_experiment(config)
+
+    assert summary["repetitions"] == 2
+    for condition in ("ck0", "ck_inf_common"):
+        aggregate = summary["aggregate_by_condition"][condition]
+        assert aggregate["n_samples"] == 2
+        assert aggregate["n_valid_samples"] == 2
+        assert aggregate["n_error_samples"] == 0
+
+        log_path = (
+            tmp_path
+            / "micro_test"
+            / "micro"
+            / "newest_rank1_three_safe"
+            / f"{condition}.jsonl"
+        )
+        assert log_path.exists()
+        assert len(log_path.read_text(encoding="utf-8").splitlines()) == 2
