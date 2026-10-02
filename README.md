@@ -78,9 +78,10 @@ intended, not whether the target card is physically or epistemically safe.
 The micro runner evaluates all five CK conditions over repeated paired samples.
 The default config uses 100 repetitions. It counterbalances CK1 so the acting
 receiver (P1) privately receives the convention, varies the model seed by
-repetition, and deterministically shuffles the legal action order. A given
-repetition uses the same action seed and same action order in every condition,
-reducing position bias in paired comparisons.
+repetition, and deterministically shuffles the legal action order. A given repetition uses the same action seed and same action order in every
+condition. Conditions themselves are executed in a deterministic randomized
+order inside each repetition, reducing position bias as well as wall-clock /
+server-state confounding.
 
 The main statistic is `newest_selection_rate`:
 
@@ -98,9 +99,15 @@ The default config also enables a **shadow intention probe**. The action call is
 made first; afterward, a separate stateless request asks only which touched safe
 card the partner intended, constrained to the candidate card indices. Probe
 output is never inserted into the action prompt or any future context. Probe
-seeds use a separate offset from action seeds. The report includes
-`probe_newest_rate`, its Wilson interval, action/probe agreement, and a
-recognition-vs-behavior table.
+seeds use a separate offset from action seeds. The report includes `probe_newest_rate`, its Wilson interval, action/probe
+agreement, `recognition_behavior_gap`, and a recognition-vs-behavior table.
+Because action and probe are separate stochastic calls, the co-indexed
+action/probe statistic is descriptive rather than a causal mediation estimate.
+
+For reproducibility diagnostics, the runner hashes the exact action and probe
+request payloads. Pairwise hash-match rates are reported; CK1 and CK2 are
+especially useful here because the informed receiver is intentionally given
+identical local wording in the one-step scenario.
 
 CK1 and CK2 intentionally have identical local wording for the informed
 receiver: the difference between those treatments is whether the partner
