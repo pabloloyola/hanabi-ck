@@ -43,6 +43,7 @@ def _build_agent(spec: dict[str, Any], *, seed: int):
                 else None
             ),
             extra_body=dict(spec.get("extra_body") or {}),
+            structured_output=bool(spec.get("structured_output", False)),
         )
     raise ValueError(f"Unknown agent type: {typ}")
 
@@ -186,6 +187,11 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                                 if cfg.get("log_raw_model_responses", True)
                                 else None
                             ),
+                            "api_response": (
+                                decision.api_response
+                                if cfg.get("log_raw_model_responses", True)
+                                else None
+                            ),
                             "researcher_true_state_before": game.true_state(),
                             "action": None,
                             "outcome": None,
@@ -228,6 +234,11 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     "action": executable_action.to_dict(),
                     "raw_response": (
                         decision.raw_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "api_response": (
+                        decision.api_response
                         if cfg.get("log_raw_model_responses", True)
                         else None
                     ),
