@@ -4,6 +4,7 @@ import argparse
 import json
 
 from .inspection import inspect_log
+from .micro_runner import run_micro_experiment
 from .runner import run_experiment
 
 
@@ -11,8 +12,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="hanabi-ck")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run = sub.add_parser("run", help="Run an experiment YAML config")
+    run = sub.add_parser("run", help="Run a full-game experiment YAML config")
     run.add_argument("config")
+
+    micro = sub.add_parser(
+        "micro",
+        help="Run a repeated one-step micro-Hanabi diagnostic",
+    )
+    micro.add_argument("config")
 
     inspect = sub.add_parser(
         "inspect",
@@ -40,6 +47,9 @@ def main() -> None:
 
     if args.command == "run":
         summary = run_experiment(args.config)
+        print(json.dumps(summary["aggregate_by_condition"], indent=2))
+    elif args.command == "micro":
+        summary = run_micro_experiment(args.config)
         print(json.dumps(summary["aggregate_by_condition"], indent=2))
     elif args.command == "inspect":
         inspect_log(
