@@ -75,10 +75,11 @@ after a rank-1 hint touches cards 1, 2, and newest card 4. All three touched car
 are provably playable. The convention therefore changes only which safe card is
 intended, not whether the target card is physically or epistemically safe.
 
-The micro runner evaluates all five CK conditions over repeated samples. It
-counterbalances CK1 so the acting receiver (P1) privately receives the convention,
-varies the model seed by repetition, and deterministically shuffles the legal
-action order. A given repetition uses the same action order in every condition,
+The micro runner evaluates all five CK conditions over repeated paired samples.
+The default config uses 100 repetitions. It counterbalances CK1 so the acting
+receiver (P1) privately receives the convention, varies the model seed by
+repetition, and deterministically shuffles the legal action order. A given
+repetition uses the same action seed and same action order in every condition,
 reducing position bias in paired comparisons.
 
 The main statistic is `newest_selection_rate`:
@@ -87,12 +88,24 @@ The main statistic is `newest_selection_rate`:
 P(play the newest touched safe card | condition)
 ```
 
-It also reports `newest_given_safe_candidate_play_rate`,
-`safe_candidate_play_rate`, `play_rate`, and action/card-index counts. CK1 and
-CK2 intentionally have identical local wording for the informed receiver: the
-difference between those treatments is whether the partner actually received the
-convention, which is not directly observable in this one-step receiver-only
-scenario.
+It also reports a Wilson 95% interval for the newest-selection rate,
+`newest_given_safe_candidate_play_rate`, `safe_candidate_play_rate`,
+`play_rate`, and action/card-index counts. The summary includes paired
+condition comparisons keyed by repetition, with both-positive, neither-positive,
+left-only, right-only, and the paired rate difference.
+
+The default config also enables a **shadow intention probe**. The action call is
+made first; afterward, a separate stateless request asks only which touched safe
+card the partner intended, constrained to the candidate card indices. Probe
+output is never inserted into the action prompt or any future context. Probe
+seeds use a separate offset from action seeds. The report includes
+`probe_newest_rate`, its Wilson interval, action/probe agreement, and a
+recognition-vs-behavior table.
+
+CK1 and CK2 intentionally have identical local wording for the informed
+receiver: the difference between those treatments is whether the partner
+actually received the convention, which is not directly observable in this
+one-step receiver-only scenario.
 
 Micro logs are written to:
 
@@ -105,8 +118,9 @@ runs/<experiment>/micro/<scenario>/<condition>.jsonl
 The initial conditions are:
 
 - `ck0`: no convention supplied.
-- `ck1_private`: convention supplied only to player 0; player 0 is not told
-  whether the partner received it.
+- `ck1_private`: convention supplied only to designated informed player(s);
+  the informed player is not told whether the partner received it. Full-game
+  configs default to player 0; micro configs can counterbalance this.
 - `ck2_shared`: convention supplied to all agents, but no statement about the
   partner's information.
 - `ck3_mutual`: each agent is explicitly told the partner received the same
@@ -224,7 +238,7 @@ tests/
 
 ## Next milestones
 
-1. Add explicit belief probes after selected turns.
+1. Extend shadow belief/intention probes to selected full-game turns.
 2. Add paired convention-conflict experiments.
 3. Add model × model cross-play matrices.
 4. Add controlled ablations of memory/history.
