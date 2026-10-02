@@ -62,6 +62,44 @@ A play can happen to succeed while still being epistemically unsafe. Summaries
 therefore include `epistemically_unsafe_plays`, `successful_unsafe_plays`,
 and `unsafe_play_rate`.
 
+## Micro-Hanabi diagnostic
+
+Before interpreting full-game score differences, use the one-step diagnostic:
+
+```bash
+uv run hanabi-ck micro configs/micro_newest.yaml
+```
+
+The starter scenario, `newest_rank1_three_safe`, fixes the game state immediately
+after a rank-1 hint touches cards 1, 2, and newest card 4. All three touched cards
+are provably playable. The convention therefore changes only which safe card is
+intended, not whether the target card is physically or epistemically safe.
+
+The micro runner evaluates all five CK conditions over repeated samples. It
+counterbalances CK1 so the acting receiver (P1) privately receives the convention,
+varies the model seed by repetition, and deterministically shuffles the legal
+action order. A given repetition uses the same action order in every condition,
+reducing position bias in paired comparisons.
+
+The main statistic is `newest_selection_rate`:
+
+```text
+P(play the newest touched safe card | condition)
+```
+
+It also reports `newest_given_safe_candidate_play_rate`,
+`safe_candidate_play_rate`, `play_rate`, and action/card-index counts. CK1 and
+CK2 intentionally have identical local wording for the informed receiver: the
+difference between those treatments is whether the partner actually received the
+convention, which is not directly observable in this one-step receiver-only
+scenario.
+
+Micro logs are written to:
+
+```text
+runs/<experiment>/micro/<scenario>/<condition>.jsonl
+```
+
 ## Common-knowledge ladder
 
 The initial conditions are:
@@ -177,6 +215,7 @@ configs/
   smoke.yaml
   llm_debug.yaml
   lmstudio.yaml
+  micro_newest.yaml
 
 tests/
   test_engine.py
