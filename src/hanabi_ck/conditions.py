@@ -21,8 +21,12 @@ class Condition:
         player_id: int,
         num_players: int,
         convention: str = DEFAULT_CONVENTION,
+        informed_players: set[int] | None = None,
     ) -> str:
-        del num_players
+        if informed_players is not None and any(
+            p < 0 or p >= num_players for p in informed_players
+        ):
+            raise ValueError("informed_players contains an invalid player id")
 
         if self.name == "ck0":
             return (
@@ -31,7 +35,8 @@ class Condition:
             )
 
         if self.name == "ck1_private":
-            if player_id == 0:
+            holders = {0} if informed_players is None else informed_players
+            if player_id in holders:
                 return (
                     f"Private experimental convention:\n{convention}\n\n"
                     "You are not told whether any other player received this convention. "
@@ -69,7 +74,10 @@ class Condition:
 
 CONDITIONS = {
     "ck0": Condition("ck0", "No supplied convention."),
-    "ck1_private": Condition("ck1_private", "Convention supplied only to player 0; no meta-information."),
+    "ck1_private": Condition(
+        "ck1_private",
+        "Convention supplied only to designated informed player(s); no meta-information.",
+    ),
     "ck2_shared": Condition("ck2_shared", "Convention privately supplied to all; no meta-information."),
     "ck3_mutual": Condition("ck3_mutual", "Everyone is told everyone received it."),
     "ck_inf_common": Condition("ck_inf_common", "Convention explicitly declared common knowledge."),
