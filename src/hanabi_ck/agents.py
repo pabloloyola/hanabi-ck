@@ -16,6 +16,7 @@ from .observations import PlayerObservation
 @dataclass
 class AgentDecision:
     action: Action | None
+    action_index: int | None = None
     raw_response: str | None = None
     response_channel: str | None = None
     api_response: dict[str, Any] | None = None
@@ -267,6 +268,26 @@ def _select_response_text(message: dict[str, Any]) -> tuple[str, str]:
     return "", "none"
 
 
+def _action_from_index_object(
+    data: dict[str, Any],
+    legal_actions: list[Action],
+) -> tuple[int, Action]:
+    if set(data) != {"action_index"}:
+        raise ValueError(
+            "Model response must contain exactly one field: action_index"
+        )
+
+    action_index = data["action_index"]
+    if isinstance(action_index, bool) or not isinstance(action_index, int):
+        raise ValueError("action_index must be an integer")
+    if not 0 <= action_index < len(legal_actions):
+        raise ValueError(
+            f"action_index {action_index} is outside legal range "
+            f"[0, {len(legal_actions) - 1}]"
+        )
+    return action_index, legal_actions[action_index]
+
+
 class OpenAICompatibleAgent:
     def __init__(
         self,
@@ -301,21 +322,35 @@ class OpenAICompatibleAgent:
         private_instruction: str,
     ) -> list[dict[str, str]]:
         system = """You are a Hanabi-playing research agent.
-You must choose exactly one legal action.
-You cannot see your own cards except through the supplied card-knowledge sets.
-The public_knowledge field records hint-derived knowledge that every player can observe.
+Choose exactly one action from the indexed legal_actions list.
+
+BASE HANABI SEMANTICS:
+- Your own cards are hidden. Use own_knowledge; never infer hidden cards from researcher state.
+- A play succeeds only when rank == stacks[color] + 1.
+- If rank <= stacks[color], that card is already obsolete and playing it is a misplay.
+- A normal hint reveals information; it is not automatically a command to play.
+- Without an applicable experimental convention, only play when every card identity
+  consistent with your current knowledge is playable.
+- An experimental convention may add pragmatic information. Use it only when the
+  supplied private_experimental_instruction actually makes it applicable.
+- If a play is not sufficiently justified, prefer a legal hint or discard instead.
+- hand_order is oldest_to_newest. newest_card_index gives the newest current slot
+  for every player.
+
+The public_knowledge field records hint-derived knowledge visible to all players.
 Never infer hidden state from the research setup.
-Return ONLY one JSON object corresponding exactly to one legal action.
-Do not include explanation."""
+Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
         user = {
             "private_experimental_instruction": private_instruction,
             "observation": observation.to_dict(),
-            "legal_actions": [a.to_dict() for a in legal_actions],
-            "output_examples": [
-                {"type": "play", "card_index": 0},
-                {"type": "discard", "card_index": 1},
-                {"type": "hint", "target": 1, "attribute": "rank", "value": 2},
+            "legal_actions": [
+                {
+                    "action_index": index,
+                    "action": action.to_dict(),
+                }
+                for index, action in enumerate(legal_actions)
             ],
+            "output_example": {"action_index": 0},
         }
         return [
             {"role": "system", "content": system},
@@ -344,51 +379,17 @@ Do not include explanation."""
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "hanabi_action",
+                    "name": "hanabi_action_selection",
                     "strict": True,
                     "schema": {
                         "type": "object",
                         "properties": {
-                            "type": {
-                                "type": "string",
-                                "enum": ["play", "discard", "hint"],
-                            },
-                            "card_index": {
-                                "anyOf": [
-                                    {"type": "integer", "minimum": 0},
-                                    {"type": "null"},
-                                ]
-                            },
-                            "target": {
-                                "anyOf": [
-                                    {"type": "integer", "minimum": 0},
-                                    {"type": "null"},
-                                ]
-                            },
-                            "attribute": {
-                                "anyOf": [
-                                    {
-                                        "type": "string",
-                                        "enum": ["color", "rank"],
-                                    },
-                                    {"type": "null"},
-                                ]
-                            },
-                            "value": {
-                                "anyOf": [
-                                    {"type": "integer"},
-                                    {"type": "string"},
-                                    {"type": "null"},
-                                ]
-                            },
+                            "action_index": {
+                                "type": "integer",
+                                "enum": list(range(len(legal_actions))),
+                            }
                         },
-                        "required": [
-                            "type",
-                            "card_index",
-                            "target",
-                            "attribute",
-                            "value",
-                        ],
+                        "required": ["action_index"],
                         "additionalProperties": False,
                     },
                 },
@@ -443,13 +444,13 @@ Do not include explanation."""
             raw, response_channel = _select_response_text(message)
 
             parsed = _extract_json_object(raw)
-            action = Action.from_dict(parsed)
-            if action not in legal_actions:
-                raise ValueError(
-                    f"Model returned illegal action: {action.to_dict()}"
-                )
+            action_index, action = _action_from_index_object(
+                parsed,
+                legal_actions,
+            )
             return AgentDecision(
                 action=action,
+                action_index=action_index,
                 raw_response=raw,
                 response_channel=response_channel,
                 api_response=data,
