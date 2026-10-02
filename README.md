@@ -42,10 +42,17 @@ export OPENAI_API_KEY=lm-studio
 uv run hanabi-ck run configs/lmstudio.yaml
 ```
 
-The LLM is asked to return one legal Hanabi action as JSON. For research runs,
-the default `agent_error_policy: abort` means API failures, malformed JSON, and
-illegal actions are logged and the game is marked invalid **without executing a
-Hanabi action**. A `safe_baseline` policy is also available for debugging.
+The LLM chooses from an indexed list of legal actions and returns only
+`{"action_index": N}`. This avoids ambiguous action-shaped JSON and lets the
+structured-output schema constrain the choice to an action that is actually
+legal in the current state. For research runs, the default
+`agent_error_policy: abort` means API failures or malformed responses are
+logged and the game is marked invalid **without executing a Hanabi action**. A
+`safe_baseline` policy is also available for debugging.
+
+Observations explicitly state `hand_order: oldest_to_newest` and provide
+`newest_card_index` for each player, so conventions involving card age do not
+depend on an undocumented implementation detail.
 
 ## Common-knowledge ladder
 
@@ -79,7 +86,8 @@ Each game writes one JSONL file. A turn record contains:
 - public game state
 - the acting player's exact observation
 - legal actions
-- selected action and raw agent response (when applicable)
+- indexed legal-action list, selected action index, and executed action
+- raw agent/API response and response channel (when applicable)
 - researcher-only true state
 - immediate outcome
 - optional probe payloads
@@ -101,8 +109,9 @@ the raw model response.
 
 ## First LLM debug run
 
-Edit `model: local-model` in `configs/llm_debug.yaml` to the model identifier
-served by LM Studio, then run:
+`configs/llm_debug.yaml` is currently configured for
+`qwen/qwen3.8-27b`. Change the model identifier if your LM Studio server
+exposes a different model, then run:
 
 ```bash
 uv run hanabi-ck run configs/llm_debug.yaml
