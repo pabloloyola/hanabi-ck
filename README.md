@@ -10,8 +10,8 @@ The first version intentionally separates:
 3. **Experimental condition** — common-knowledge / convention manipulation.
 4. **Instrumentation** — JSONL turn logs with both agent-visible observations and
    researcher-only ground truth.
-5. **Metrics** — score, misplays, hints, discards, hint efficiency proxies, and
-   cross-condition aggregation.
+5. **Metrics** — score, misplays, epistemically unsafe plays, hints, discards,
+   hint efficiency proxies, and cross-condition aggregation.
 
 The default experiment is 2-player Hanabi, but the engine supports 2–5 players.
 
@@ -52,7 +52,15 @@ logged and the game is marked invalid **without executing a Hanabi action**. A
 
 Observations explicitly state `hand_order: oldest_to_newest` and provide
 `newest_card_index` for each player, so conventions involving card age do not
-depend on an undocumented implementation detail.
+depend on an undocumented implementation detail. They also expose
+`provably_playable_indices`, `provably_obsolete_indices`, and per-card
+`play_safety`. These are deterministic consequences of the acting player's
+hint-derived knowledge and the public stacks; they do not use hidden cards.
+
+The logs distinguish **physical success** from **epistemic justification**.
+A play can happen to succeed while still being epistemically unsafe. Summaries
+therefore include `epistemically_unsafe_plays`, `successful_unsafe_plays`,
+and `unsafe_play_rate`.
 
 ## Common-knowledge ladder
 
@@ -89,7 +97,8 @@ Each game writes one JSONL file. A turn record contains:
 - indexed legal-action list, selected action index, and executed action
 - raw agent/API response and response channel (when applicable)
 - researcher-only true state
-- immediate outcome
+- immediate physical outcome
+- epistemic play-safety status for play actions
 - optional probe payloads
 
 A `summary.json` is also produced for each experiment.
@@ -139,6 +148,8 @@ Then compare:
 - final score
 - failed / perfect games
 - life losses
+- unsafe-play rate
+- successful-but-unsafe plays
 - hints used
 - successful plays per hint
 - invalid-action rate
