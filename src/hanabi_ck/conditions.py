@@ -38,9 +38,9 @@ class Condition:
             holders = {0} if informed_players is None else informed_players
             if player_id in holders:
                 return (
-                    f"Private experimental convention:\n{convention}\n\n"
-                    "You are not told whether any other player received this convention. "
-                    "Do not assume that they did."
+                    f"Experimental convention:\n{convention}\n\n"
+                    "You were privately given this convention. You receive no explicit "
+                    "information about whether the other players were given it."
                 )
             return (
                 "No extra team convention is supplied to you. Coordinate using only the "
