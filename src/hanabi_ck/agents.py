@@ -263,6 +263,8 @@ class OpenAICompatibleAgent:
         api_key: str | None = None,
         temperature: float = 0.0,
         timeout_s: float = 60.0,
+        max_tokens: int | None = None,
+        extra_body: dict[str, Any] | None = None,
     ):
         self.name = name
         self.model = model
@@ -273,6 +275,8 @@ class OpenAICompatibleAgent:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "lm-studio")
         self.temperature = temperature
         self.timeout_s = timeout_s
+        self.max_tokens = max_tokens
+        self.extra_body = dict(extra_body or {})
 
     def _prompt(
         self,
@@ -302,13 +306,13 @@ Do not include explanation."""
             {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
         ]
 
-    def act(
+    def _request_payload(
         self,
         observation: PlayerObservation,
         legal_actions: list[Action],
         private_instruction: str,
-    ) -> AgentDecision:
-        payload = {
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._prompt(
                 observation,
@@ -317,6 +321,34 @@ Do not include explanation."""
             ),
             "temperature": self.temperature,
         }
+        if self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
+
+        reserved = {"model", "messages", "temperature", "max_tokens"}
+        collisions = reserved.intersection(self.extra_body)
+        if collisions:
+            names = ", ".join(sorted(collisions))
+            raise ValueError(
+                f"extra_body cannot override reserved request fields: {names}"
+            )
+
+        # Match OpenAI SDK extra_body semantics: vendor-specific values are
+        # merged into the JSON request body, rather than sent under a literal
+        # "extra_body" key.
+        payload.update(self.extra_body)
+        return payload
+
+    def act(
+        self,
+        observation: PlayerObservation,
+        legal_actions: list[Action],
+        private_instruction: str,
+    ) -> AgentDecision:
+        payload = self._request_payload(
+            observation,
+            legal_actions,
+            private_instruction,
+        )
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
         raw = ""
