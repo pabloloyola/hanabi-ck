@@ -15,3 +15,15 @@ def test_observation_exposes_public_knowledge_for_all_players():
         card_knowledge["possible_ranks"] == [rank]
         for card_knowledge in observation.public_knowledge[1]
     )
+
+
+def test_observation_exposes_hand_order_and_newest_slots():
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+
+    assert observation.hand_order == "oldest_to_newest"
+    assert observation.newest_card_index == {0: 4, 1: 4}
+    serialized = observation.to_dict()
+    assert serialized["hand_order"] == "oldest_to_newest"
+    assert serialized["newest_card_index"][0] == 4
+    assert serialized["newest_card_index"][1] == 4
