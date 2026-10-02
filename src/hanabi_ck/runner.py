@@ -96,6 +96,9 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
     seeds = [int(s) for s in cfg.get("seeds", [0])]
     conditions = list(cfg.get("conditions", ["ck0"]))
     convention = str(cfg.get("convention", DEFAULT_CONVENTION))
+    ck1_informed_players = {
+        int(p) for p in cfg.get("ck1_informed_players", [0])
+    }
     error_policy = str(cfg.get("agent_error_policy", "abort"))
     if error_policy not in ERROR_POLICIES:
         raise ValueError(
@@ -134,6 +137,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     player_id=p,
                     num_players=num_players,
                     convention=convention,
+                    informed_players=ck1_informed_players,
                 )
 
                 decision = agents[p].act(
@@ -302,6 +306,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
         "seeds": seeds,
         "conditions": conditions,
         "agent_error_policy": error_policy,
+        "ck1_informed_players": sorted(ck1_informed_players),
         "games": all_summaries,
         "aggregate_by_condition": by_condition,
     }
