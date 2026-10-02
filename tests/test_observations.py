@@ -27,3 +27,23 @@ def test_observation_exposes_hand_order_and_newest_slots():
     assert serialized["hand_order"] == "oldest_to_newest"
     assert serialized["newest_card_index"][0] == 4
     assert serialized["newest_card_index"][1] == 4
+
+
+def test_observation_derives_epistemic_play_safety_without_hidden_state():
+    game = HanabiGame(num_players=2, seed=0)
+    game.knowledge[0][0].possible_ranks = {1}
+
+    observation = game.observe(0)
+    assert 0 in observation.provably_playable_indices
+    assert observation.play_safety[0] == "provably_safe"
+
+    game.stacks["Y"] = 1
+    observation = game.observe(0)
+    assert 0 not in observation.provably_playable_indices
+    assert observation.play_safety[0] == "not_proven_safe"
+
+    for color in game.stacks:
+        game.stacks[color] = 1
+    observation = game.observe(0)
+    assert 0 in observation.provably_obsolete_indices
+    assert observation.play_safety[0] == "provably_obsolete"
