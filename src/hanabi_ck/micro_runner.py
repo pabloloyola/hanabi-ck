@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import random
 from collections import Counter
 from pathlib import Path
-from statistics import mean
+from statistics import mean, stdev
 from typing import Any
 
 from .actions import Action
+from .agents import OpenAICompatibleAgent
 from .conditions import DEFAULT_CONVENTION, get_condition
 from .logging import JsonlLogger
 from .micro_scenarios import MicroScenario, get_micro_scenario
@@ -48,6 +50,167 @@ def _agent_spec_for_sample(
     return spec
 
 
+def _wilson_interval(
+    successes: int,
+    n: int,
+    *,
+    z: float = 1.959963984540054,
+) -> list[float] | None:
+    if n <= 0:
+        return None
+    p = successes / n
+    z2 = z * z
+    denominator = 1.0 + z2 / n
+    center = (p + z2 / (2.0 * n)) / denominator
+    half = (
+        z
+        * math.sqrt(
+            p * (1.0 - p) / n
+            + z2 / (4.0 * n * n)
+        )
+        / denominator
+    )
+    return [max(0.0, center - half), min(1.0, center + half)]
+
+
+def _paired_binary_comparison(
+    left_samples: list[dict[str, Any]],
+    right_samples: list[dict[str, Any]],
+    *,
+    field: str,
+    valid_field: str,
+    left_condition: str,
+    right_condition: str,
+) -> dict[str, Any]:
+    left_by_rep = {
+        int(sample["repetition"]): sample
+        for sample in left_samples
+        if sample.get(valid_field)
+    }
+    right_by_rep = {
+        int(sample["repetition"]): sample
+        for sample in right_samples
+        if sample.get(valid_field)
+    }
+    repetitions = sorted(set(left_by_rep).intersection(right_by_rep))
+
+    pairs: list[tuple[bool, bool]] = [
+        (
+            bool(left_by_rep[rep].get(field)),
+            bool(right_by_rep[rep].get(field)),
+        )
+        for rep in repetitions
+    ]
+    n = len(pairs)
+    both = sum(left and right for left, right in pairs)
+    neither = sum((not left) and (not right) for left, right in pairs)
+    left_only = sum(left and not right for left, right in pairs)
+    right_only = sum((not left) and right for left, right in pairs)
+
+    if not pairs:
+        return {
+            "left_condition": left_condition,
+            "right_condition": right_condition,
+            "n_paired": 0,
+            "both_positive": 0,
+            "neither_positive": 0,
+            "left_only": 0,
+            "right_only": 0,
+            "left_rate": None,
+            "right_rate": None,
+            "delta_right_minus_left": None,
+            "delta_ci95_normal": None,
+        }
+
+    left_rate = mean(float(left) for left, _ in pairs)
+    right_rate = mean(float(right) for _, right in pairs)
+    differences = [
+        float(right) - float(left)
+        for left, right in pairs
+    ]
+    delta = mean(differences)
+
+    if len(differences) > 1:
+        se = stdev(differences) / math.sqrt(len(differences))
+        ci = [
+            max(-1.0, delta - 1.959963984540054 * se),
+            min(1.0, delta + 1.959963984540054 * se),
+        ]
+    else:
+        ci = [delta, delta]
+
+    return {
+        "left_condition": left_condition,
+        "right_condition": right_condition,
+        "n_paired": n,
+        "both_positive": both,
+        "neither_positive": neither,
+        "left_only": left_only,
+        "right_only": right_only,
+        "left_rate": left_rate,
+        "right_rate": right_rate,
+        "delta_right_minus_left": delta,
+        "delta_ci95_normal": ci,
+    }
+
+
+def _all_pairwise_comparisons(
+    samples: list[dict[str, Any]],
+    conditions: list[str],
+    *,
+    field: str,
+    valid_field: str,
+) -> dict[str, Any]:
+    by_condition = {
+        condition: [
+            sample for sample in samples
+            if sample["condition"] == condition
+        ]
+        for condition in conditions
+    }
+    comparisons: dict[str, Any] = {}
+    for left_index, left in enumerate(conditions):
+        for right in conditions[left_index + 1:]:
+            key = f"{left}__vs__{right}"
+            comparisons[key] = _paired_binary_comparison(
+                by_condition[left],
+                by_condition[right],
+                field=field,
+                valid_field=valid_field,
+                left_condition=left,
+                right_condition=right,
+            )
+    return comparisons
+
+
+def _comparisons_vs_baseline(
+    comparisons: dict[str, Any],
+    baseline: str,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, comparison in comparisons.items():
+        if comparison["left_condition"] == baseline:
+            result[comparison["right_condition"]] = comparison
+        elif comparison["right_condition"] == baseline:
+            flipped = dict(comparison)
+            flipped["left_condition"] = baseline
+            flipped["right_condition"] = comparison["left_condition"]
+            flipped["left_rate"] = comparison["right_rate"]
+            flipped["right_rate"] = comparison["left_rate"]
+            flipped["left_only"] = comparison["right_only"]
+            flipped["right_only"] = comparison["left_only"]
+            delta = comparison["delta_right_minus_left"]
+            flipped["delta_right_minus_left"] = (
+                -delta if delta is not None else None
+            )
+            ci = comparison["delta_ci95_normal"]
+            flipped["delta_ci95_normal"] = (
+                [-ci[1], -ci[0]] if ci is not None else None
+            )
+            result[flipped["right_condition"]] = flipped
+    return result
+
+
 def aggregate_micro_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     valid = [sample for sample in samples if sample["valid"]]
     out: dict[str, Any] = {
@@ -63,12 +226,21 @@ def aggregate_micro_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             {
                 "newest_selection_count": 0,
                 "newest_selection_rate": None,
+                "newest_selection_rate_ci95_wilson": None,
                 "play_rate": None,
                 "safe_candidate_play_rate": None,
                 "newest_given_safe_candidate_play_rate": None,
                 "epistemically_safe_play_rate": None,
                 "action_type_counts": {},
                 "play_card_index_counts": {},
+                "probe_valid_count": 0,
+                "probe_error_count": 0,
+                "probe_newest_count": 0,
+                "probe_newest_rate": None,
+                "probe_newest_rate_ci95_wilson": None,
+                "action_matches_probe_rate": None,
+                "action_newest_given_probe_newest_rate": None,
+                "recognition_behavior_table": {},
             }
         )
         return out
@@ -97,10 +269,65 @@ def aggregate_micro_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         for sample in play_samples
     )
 
+    probe_valid = [
+        sample for sample in valid
+        if sample.get("probe_valid") is True
+    ]
+    probe_error_count = sum(
+        1 for sample in valid
+        if sample.get("probe_enabled")
+        and not sample.get("probe_valid")
+    )
+    probe_newest_count = sum(
+        bool(sample.get("probe_inferred_newest_target"))
+        for sample in probe_valid
+    )
+    action_matches_probe_count = sum(
+        sample.get("selected_card_index")
+        == sample.get("probe_intended_card_index")
+        for sample in probe_valid
+        if sample.get("selected_card_index") is not None
+    )
+    probe_with_play = [
+        sample for sample in probe_valid
+        if sample.get("selected_card_index") is not None
+    ]
+    probe_newest = [
+        sample for sample in probe_valid
+        if sample.get("probe_inferred_newest_target")
+    ]
+
+    recognition_behavior_table = {
+        "both_newest": sum(
+            bool(sample.get("probe_inferred_newest_target"))
+            and bool(sample["selected_newest_target"])
+            for sample in probe_valid
+        ),
+        "probe_newest_action_not": sum(
+            bool(sample.get("probe_inferred_newest_target"))
+            and not bool(sample["selected_newest_target"])
+            for sample in probe_valid
+        ),
+        "action_newest_probe_not": sum(
+            not bool(sample.get("probe_inferred_newest_target"))
+            and bool(sample["selected_newest_target"])
+            for sample in probe_valid
+        ),
+        "neither_newest": sum(
+            not bool(sample.get("probe_inferred_newest_target"))
+            and not bool(sample["selected_newest_target"])
+            for sample in probe_valid
+        ),
+    }
+
     out.update(
         {
             "newest_selection_count": newest_count,
             "newest_selection_rate": newest_count / len(valid),
+            "newest_selection_rate_ci95_wilson": _wilson_interval(
+                newest_count,
+                len(valid),
+            ),
             "play_rate": len(play_samples) / len(valid),
             "safe_candidate_play_rate": len(candidate_samples) / len(valid),
             "newest_given_safe_candidate_play_rate": (
@@ -120,6 +347,32 @@ def aggregate_micro_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "play_card_index_counts": dict(
                 sorted(play_card_index_counts.items())
             ),
+            "probe_valid_count": len(probe_valid),
+            "probe_error_count": probe_error_count,
+            "probe_newest_count": probe_newest_count,
+            "probe_newest_rate": (
+                probe_newest_count / len(probe_valid)
+                if probe_valid
+                else None
+            ),
+            "probe_newest_rate_ci95_wilson": _wilson_interval(
+                probe_newest_count,
+                len(probe_valid),
+            ),
+            "action_matches_probe_rate": (
+                action_matches_probe_count / len(probe_with_play)
+                if probe_with_play
+                else None
+            ),
+            "action_newest_given_probe_newest_rate": (
+                mean(
+                    float(sample["selected_newest_target"])
+                    for sample in probe_newest
+                )
+                if probe_newest
+                else None
+            ),
+            "recognition_behavior_table": recognition_behavior_table,
         }
     )
     return out
@@ -151,7 +404,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             ],
         )
     )
-    repetitions = int(cfg.get("repetitions", 20))
+    repetitions = int(cfg.get("repetitions", 100))
     if repetitions <= 0:
         raise ValueError("repetitions must be positive")
 
@@ -167,6 +420,13 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
     action_order_seed = int(cfg.get("action_order_seed", 100_000))
+    shadow_probe = bool(cfg.get("shadow_intention_probe", False))
+    probe_seed_offset = int(cfg.get("probe_seed_offset", 1_000_000))
+    if shadow_probe and base_agent_spec.get("type") != "openai_compatible":
+        raise ValueError(
+            "shadow_intention_probe currently requires an openai_compatible agent"
+        )
+
     ck1_informed_players = {
         int(p)
         for p in cfg.get(
@@ -206,6 +466,9 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 convention=convention,
                 informed_players=ck1_informed_players,
             )
+
+            # Action is sampled first. The shadow probe is a separate stateless
+            # request and is never included in the action prompt or future context.
             decision = agent.act(
                 scenario.observation,
                 legal_actions,
@@ -245,6 +508,51 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 if executable_action is not None
                 else None
             )
+
+            probe_valid = False
+            probe_error: str | None = None
+            probe_intended_card_index: int | None = None
+            probe_inferred_newest_target = False
+            probe_raw_response: str | None = None
+            probe_response_channel: str | None = None
+            probe_api_response: dict[str, Any] | None = None
+            probe_seed: int | None = None
+
+            if shadow_probe:
+                probe_seed = probe_seed_offset + sample_seed
+                probe_agent_spec = _agent_spec_for_sample(
+                    base_agent_spec,
+                    sample_seed=probe_seed,
+                    vary_api_seed=vary_api_seed,
+                )
+                probe_agent = _build_agent(
+                    probe_agent_spec,
+                    seed=probe_seed,
+                )
+                if not isinstance(probe_agent, OpenAICompatibleAgent):
+                    raise RuntimeError(
+                        "shadow probe requires OpenAICompatibleAgent"
+                    )
+                probe = probe_agent.probe_intended_card(
+                    scenario.observation,
+                    private_instruction,
+                    scenario.trigger_hint,
+                    list(scenario.diagnostic_safe_card_indices),
+                )
+                probe_valid = (
+                    probe.parse_error is None
+                    and probe.intended_card_index is not None
+                )
+                probe_error = probe.parse_error
+                probe_intended_card_index = probe.intended_card_index
+                probe_inferred_newest_target = (
+                    probe.intended_card_index
+                    == scenario.target_action.card_index
+                )
+                probe_raw_response = probe.raw_response
+                probe_response_channel = probe.response_channel
+                probe_api_response = probe.api_response
+
             record = {
                 "event_kind": "micro_sample",
                 "experiment": experiment,
@@ -300,9 +608,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "selected_card_index": selected_card_index,
                 "selected_newest_target": selected_newest_target,
-                "selected_safe_candidate_play": (
-                    selected_safe_candidate_play
-                ),
+                "selected_safe_candidate_play": selected_safe_candidate_play,
                 "selected_epistemically_safe_play": (
                     selected_epistemically_safe_play
                 ),
@@ -315,6 +621,23 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "api_response": (
                     decision.api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "probe_enabled": shadow_probe,
+                "probe_seed": probe_seed,
+                "probe_valid": probe_valid,
+                "probe_error": probe_error,
+                "probe_intended_card_index": probe_intended_card_index,
+                "probe_inferred_newest_target": probe_inferred_newest_target,
+                "probe_response_channel": probe_response_channel,
+                "probe_raw_response": (
+                    probe_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "probe_api_response": (
+                    probe_api_response
                     if cfg.get("log_raw_model_responses", True)
                     else None
                 ),
@@ -332,6 +655,34 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ]
         aggregate_by_condition[condition_name] = aggregate_micro_samples(subset)
 
+    action_pairwise = _all_pairwise_comparisons(
+        all_samples,
+        conditions,
+        field="selected_newest_target",
+        valid_field="valid",
+    )
+    probe_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="probe_inferred_newest_target",
+            valid_field="probe_valid",
+        )
+        if shadow_probe
+        else {}
+    )
+
+    baseline = "ck0" if "ck0" in conditions else conditions[0]
+    paired_action_vs_baseline = _comparisons_vs_baseline(
+        action_pairwise,
+        baseline,
+    )
+    paired_probe_vs_baseline = (
+        _comparisons_vs_baseline(probe_pairwise, baseline)
+        if probe_pairwise
+        else {}
+    )
+
     summary = {
         "experiment": experiment,
         "config_path": str(config_path),
@@ -348,9 +699,15 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "shuffle_legal_actions": shuffle_actions,
         "action_order_seed": action_order_seed,
         "vary_api_seed": vary_api_seed,
+        "shadow_intention_probe": shadow_probe,
+        "probe_seed_offset": probe_seed_offset,
         "ck1_informed_players": sorted(ck1_informed_players),
         "agent_error_policy": error_policy,
         "aggregate_by_condition": aggregate_by_condition,
+        "paired_action_comparisons": action_pairwise,
+        "paired_action_vs_baseline": paired_action_vs_baseline,
+        "paired_probe_comparisons": probe_pairwise,
+        "paired_probe_vs_baseline": paired_probe_vs_baseline,
         "samples": all_samples,
     }
     summary_path = output_root / "summary.json"
