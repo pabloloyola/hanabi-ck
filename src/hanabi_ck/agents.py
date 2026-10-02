@@ -17,6 +17,7 @@ from .observations import PlayerObservation
 class AgentDecision:
     action: Action | None
     raw_response: str | None = None
+    response_channel: str | None = None
     api_response: dict[str, Any] | None = None
     parse_error: str | None = None
     fallback_used: bool = False
@@ -254,6 +255,18 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return obj
 
 
+def _select_response_text(message: dict[str, Any]) -> tuple[str, str]:
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content, "content"
+
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning.strip():
+        return reasoning, "reasoning_content"
+
+    return "", "none"
+
+
 class OpenAICompatibleAgent:
     def __init__(
         self,
@@ -427,8 +440,7 @@ Do not include explanation."""
                 data = response.json()
 
             message = data["choices"][0]["message"]
-            content = message.get("content")
-            raw = content if isinstance(content, str) else ""
+            raw, response_channel = _select_response_text(message)
 
             parsed = _extract_json_object(raw)
             action = Action.from_dict(parsed)
@@ -439,12 +451,18 @@ Do not include explanation."""
             return AgentDecision(
                 action=action,
                 raw_response=raw,
+                response_channel=response_channel,
                 api_response=data,
             )
         except Exception as exc:
             return AgentDecision(
                 action=None,
                 raw_response=raw or None,
+                response_channel=(
+                    response_channel
+                    if "response_channel" in locals()
+                    else None
+                ),
                 api_response=data,
                 parse_error=f"{type(exc).__name__}: {exc}",
                 fallback_used=False,
