@@ -14,9 +14,14 @@ conditions:
 # private convention knowledge rather than a player who never received it.
 ck1_informed_players: [1]
 
-repetitions: 20
+repetitions: 100
 sample_seed_start: 0
 vary_api_seed: true
+
+# Run a separate stateless intention probe after the action call. Probe output
+# is never fed back into the action context.
+shadow_intention_probe: true
+probe_seed_offset: 1000000
 
 # Shuffle the indexed legal-action list per repetition to reduce position bias.
 # The same repetition uses the same action order in every CK condition.
