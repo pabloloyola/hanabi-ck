@@ -50,7 +50,20 @@ def main() -> None:
         print(json.dumps(summary["aggregate_by_condition"], indent=2))
     elif args.command == "micro":
         summary = run_micro_experiment(args.config)
-        print(json.dumps(summary["aggregate_by_condition"], indent=2))
+        print(
+            json.dumps(
+                {
+                    "aggregate_by_condition": summary["aggregate_by_condition"],
+                    "paired_action_vs_baseline": (
+                        summary["paired_action_vs_baseline"]
+                    ),
+                    "paired_probe_vs_baseline": (
+                        summary["paired_probe_vs_baseline"]
+                    ),
+                },
+                indent=2,
+            )
+        )
     elif args.command == "inspect":
         inspect_log(
             args.log,
