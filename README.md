@@ -140,9 +140,11 @@ runs/<experiment>/micro/<scenario>/<condition>.jsonl
 
 ### Two-agent sender → receiver diagnostic
 
-The next step tests both convention **encoding** and **decoding**:
+The next step tests both convention **encoding** and **decoding**. Start with
+the low-cost smoke run, then scale to the full 100-repetition experiment:
 
 ```bash
+uv run hanabi-ck micro-pair configs/micro_pair_smoke.yaml
 uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
 ```
 
@@ -274,6 +276,7 @@ configs/
   llm_debug.yaml
   lmstudio.yaml
   micro_newest.yaml
+  micro_pair_smoke.yaml
   micro_pair_newest.yaml
 
 tests/
