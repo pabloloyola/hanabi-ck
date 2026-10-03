@@ -14,6 +14,7 @@ from .logging import JsonlLogger
 from .micro_runner import (
     _agent_spec_for_sample,
     _all_pairwise_comparisons,
+    _all_pairwise_hash_comparisons,
     _comparisons_vs_baseline,
     _payload_hash,
     _wilson_interval,
@@ -49,7 +50,8 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "n_error_samples": len(samples),
             "sender_convention_hint_rate": None,
             "receiver_newest_rate": None,
-            "coordination_success_rate": None,
+            "safe_coordination_success_rate": None,
+            "convention_chain_success_rate": None,
             "receiver_newest_given_convention_hint_rate": None,
         }
 
@@ -65,6 +67,14 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         sample for sample in valid
         if sample["sender_used_convention_hint"]
     ]
+    safe_coordination_count = sum(
+        bool(sample["safe_coordination_success"])
+        for sample in valid
+    )
+    convention_chain_count = sum(
+        bool(sample["convention_chain_success"])
+        for sample in valid
+    )
     receiver_action_types = Counter(
         sample["receiver_action"]["type"]
         for sample in valid
@@ -86,7 +96,22 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             receiver_newest_count,
             len(valid),
         ),
-        "coordination_success_rate": receiver_newest_count / len(valid),
+        "safe_coordination_success_count": safe_coordination_count,
+        "safe_coordination_success_rate": (
+            safe_coordination_count / len(valid)
+        ),
+        "safe_coordination_success_rate_ci95_wilson": _wilson_interval(
+            safe_coordination_count,
+            len(valid),
+        ),
+        "convention_chain_success_count": convention_chain_count,
+        "convention_chain_success_rate": (
+            convention_chain_count / len(valid)
+        ),
+        "convention_chain_success_rate_ci95_wilson": _wilson_interval(
+            convention_chain_count,
+            len(valid),
+        ),
         "receiver_newest_given_convention_hint_rate": (
             mean(
                 float(sample["receiver_selected_newest"])
@@ -318,6 +343,15 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     in receiver_observation.provably_playable_indices
                 )
 
+            safe_coordination_success = (
+                receiver_selected_newest
+                and receiver_epistemically_safe_play is True
+            )
+            convention_chain_success = (
+                sender_action == scenario.convention_trigger_hint
+                and safe_coordination_success
+            )
+
             record = {
                 "event_kind": "micro_pair_sample",
                 "experiment": experiment,
@@ -342,6 +376,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "sender_legal_hints": [
                     action.to_dict() for action in sender_actions
                 ],
+                "sender_model_action_index": sender_decision.action_index,
                 "sender_action": sender_action.to_dict(),
                 "sender_used_convention_hint": (
                     sender_action == scenario.convention_trigger_hint
@@ -349,10 +384,16 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "sender_agent": {
                     "model": sender_spec.get("model"),
                     "response_error": sender_decision.parse_error is not None,
+                    "response_channel": sender_decision.response_channel,
                     "error": sender_decision.parse_error,
                     "fallback_used": sender_fallback,
                     "raw_response": (
                         sender_decision.raw_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "api_response": (
+                        sender_decision.api_response
                         if cfg.get("log_raw_model_responses", True)
                         else None
                     ),
@@ -361,6 +402,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "receiver_legal_actions": [
                     action.to_dict() for action in receiver_actions
                 ],
+                "receiver_model_action_index": receiver_decision.action_index,
                 "receiver_action": (
                     receiver_action.to_dict()
                     if receiver_action is not None
@@ -370,13 +412,21 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "receiver_epistemically_safe_play": (
                     receiver_epistemically_safe_play
                 ),
+                "safe_coordination_success": safe_coordination_success,
+                "convention_chain_success": convention_chain_success,
                 "receiver_agent": {
                     "model": receiver_spec.get("model"),
                     "response_error": receiver_decision.parse_error is not None,
+                    "response_channel": receiver_decision.response_channel,
                     "error": receiver_decision.parse_error,
                     "fallback_used": receiver_fallback,
                     "raw_response": (
                         receiver_decision.raw_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "api_response": (
+                        receiver_decision.api_response
                         if cfg.get("log_raw_model_responses", True)
                         else None
                     ),
@@ -400,6 +450,30 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         field="receiver_selected_newest",
         valid_field="valid",
     )
+    safe_coordination_pairwise = _all_pairwise_comparisons(
+        all_samples,
+        conditions,
+        field="safe_coordination_success",
+        valid_field="valid",
+    )
+    convention_chain_pairwise = _all_pairwise_comparisons(
+        all_samples,
+        conditions,
+        field="convention_chain_success",
+        valid_field="valid",
+    )
+    sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
+        all_samples,
+        conditions,
+        field="sender_request_payload_hash",
+        valid_field="valid",
+    )
+    receiver_request_hash_pairwise = _all_pairwise_hash_comparisons(
+        all_samples,
+        conditions,
+        field="receiver_request_payload_hash",
+        valid_field="valid",
+    )
     baseline = "ck0" if "ck0" in conditions else conditions[0]
     summary = {
         "experiment": experiment,
@@ -413,6 +487,24 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "paired_receiver_vs_baseline": _comparisons_vs_baseline(
             receiver_pairwise,
             baseline,
+        ),
+        "paired_safe_coordination_comparisons": (
+            safe_coordination_pairwise
+        ),
+        "paired_safe_coordination_vs_baseline": _comparisons_vs_baseline(
+            safe_coordination_pairwise,
+            baseline,
+        ),
+        "paired_convention_chain_comparisons": convention_chain_pairwise,
+        "paired_convention_chain_vs_baseline": _comparisons_vs_baseline(
+            convention_chain_pairwise,
+            baseline,
+        ),
+        "paired_sender_request_hash_comparisons": (
+            sender_request_hash_pairwise
+        ),
+        "paired_receiver_request_hash_comparisons": (
+            receiver_request_hash_pairwise
         ),
         "samples": all_samples,
     }
