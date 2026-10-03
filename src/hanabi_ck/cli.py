@@ -86,6 +86,15 @@ def main() -> None:
                     "paired_receiver_vs_baseline": (
                         summary["paired_receiver_vs_baseline"]
                     ),
+                    "paired_safe_coordination_vs_baseline": (
+                        summary["paired_safe_coordination_vs_baseline"]
+                    ),
+                    "paired_convention_chain_vs_baseline": (
+                        summary["paired_convention_chain_vs_baseline"]
+                    ),
+                    "paired_sender_request_hash_comparisons": (
+                        summary["paired_sender_request_hash_comparisons"]
+                    ),
                 },
                 indent=2,
             )
