@@ -42,6 +42,13 @@ export OPENAI_API_KEY=lm-studio
 uv run hanabi-ck run configs/lmstudio.yaml
 ```
 
+The same adapter can point at a stronger remote model as long as the endpoint is
+OpenAI-compatible. Omit `base_url` and `api_key` from YAML and set
+`OPENAI_BASE_URL` / `OPENAI_API_KEY`, or provide them in the agent spec.
+For providers that do not accept a request `seed`, set
+`vary_api_seed: false`. Provider-specific LM Studio/Qwen fields in
+`extra_body` should be removed when switching providers.
+
 The LLM chooses from an indexed list of legal actions and returns only
 `{"action_index": N}`. This avoids ambiguous action-shaped JSON and lets the
 structured-output schema constrain the choice to an action that is actually
@@ -146,6 +153,7 @@ the low-cost smoke run, then scale to the full 100-repetition experiment:
 ```bash
 uv run hanabi-ck micro-pair configs/micro_pair_smoke.yaml
 uv run hanabi-ck micro-pair configs/micro_pair_pilot.yaml
+uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
 uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
 ```
 
@@ -166,8 +174,28 @@ the sender may encode with a convention that the receiver cannot assume.
 The sender prompt also receives a deterministic annotation of each legal hint's
 `touched_indices`. These are mechanically derivable from the visible receiver
 hand and are exposed so the diagnostic measures convention use rather than the
-model's ability to mentally simulate hint effects. The 20-repetition
-`micro_pair_pilot.yaml` is the gate before another 100-repetition run.
+model's ability to mentally simulate hint effects.
+
+After the revised 20-repetition pilot showed that the sender still rarely chose
+the convention-triggering hint, the harness gained a separate **sender shadow
+probe**. The action is sampled first; then a fresh stateless call asks:
+
+- which indexed hint invokes the supplied convention for the communication goal;
+- whether the sender's instruction implies that the receiver's convention
+  knowledge is `no_convention`, `unknown`, or `known`.
+
+This produces `sender_probe_mapping_accuracy`,
+`sender_probe_partner_knowledge_accuracy`, and
+`sender_probe_knowledge_to_action_gap`. CK1 and CK2 should both yield
+`unknown` for the sender's belief about the receiver because their sender-local
+wording is intentionally identical. Run this diagnostic with:
+
+```bash
+uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
+```
+
+That pilot uses 20 repetitions and makes 300 calls: sender action, sender shadow
+probe, and receiver action for each condition/repetition.
 
 ## Common-knowledge ladder
 
