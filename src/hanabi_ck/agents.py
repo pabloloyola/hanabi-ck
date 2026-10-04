@@ -33,6 +33,16 @@ class IntentionProbeDecision:
     parse_error: str | None = None
 
 
+@dataclass
+class SenderEpistemicProbeDecision:
+    convention_hint_index: int | None
+    receiver_convention_knowledge: str | None
+    raw_response: str | None = None
+    response_channel: str | None = None
+    api_response: dict[str, Any] | None = None
+    parse_error: str | None = None
+
+
 class Agent(Protocol):
     name: str
 
@@ -561,6 +571,207 @@ Return ONLY JSON of the form {"intended_card_index": N}."""
         except Exception as exc:
             return IntentionProbeDecision(
                 intended_card_index=None,
+                raw_response=raw or None,
+                response_channel=(
+                    response_channel
+                    if "response_channel" in locals()
+                    else None
+                ),
+                api_response=data,
+                parse_error=f"{type(exc).__name__}: {exc}",
+            )
+
+    def _sender_epistemic_probe_prompt(
+        self,
+        observation: PlayerObservation,
+        private_instruction: str,
+        sender_goal: str,
+        hint_effects: list[dict[str, Any]],
+    ) -> list[dict[str, str]]:
+        system = """You are a stateless shadow probe for a Hanabi experiment.
+Do not choose the sender's actual game action and do not explain your answer.
+
+Answer two diagnostic questions using only the supplied player-visible
+observation, experimental instruction, communication goal, and mechanical hint
+effects:
+
+1. Which indexed legal hint, if any, is the hint that invokes the supplied
+   experimental convention to communicate the stated goal? If no convention
+   is supplied in the experimental instruction, answer -1.
+2. What can the sender infer from its experimental instruction about whether
+   the receiver was also given that convention?
+   - "no_convention": no convention is supplied to the sender.
+   - "unknown": the sender has the convention but has no explicit information
+     about whether the receiver was given it.
+   - "known": the sender is explicitly told the receiver/everyone has it.
+
+Return ONLY JSON with exactly:
+{"convention_hint_index": N,
+ "receiver_convention_knowledge": "no_convention|unknown|known"}."""
+        user = {
+            "private_experimental_instruction": private_instruction,
+            "observation": observation.to_dict(),
+            "communication_goal": sender_goal,
+            "indexed_hint_effects": hint_effects,
+        }
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+        ]
+
+    def _sender_epistemic_probe_payload(
+        self,
+        observation: PlayerObservation,
+        private_instruction: str,
+        sender_goal: str,
+        hint_effects: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        hint_indices = [
+            int(item["action_index"])
+            for item in hint_effects
+        ]
+        if not hint_indices:
+            raise ValueError("hint_effects must be non-empty")
+        allowed_hint_indices = [-1, *hint_indices]
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": self._sender_epistemic_probe_prompt(
+                observation,
+                private_instruction,
+                sender_goal,
+                hint_effects,
+            ),
+            "temperature": self.temperature,
+        }
+        if self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
+
+        if self.structured_output:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "hanabi_sender_epistemic_probe",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "convention_hint_index": {
+                                "type": "integer",
+                                "enum": allowed_hint_indices,
+                            },
+                            "receiver_convention_knowledge": {
+                                "type": "string",
+                                "enum": [
+                                    "no_convention",
+                                    "unknown",
+                                    "known",
+                                ],
+                            },
+                        },
+                        "required": [
+                            "convention_hint_index",
+                            "receiver_convention_knowledge",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+
+        reserved = {
+            "model",
+            "messages",
+            "temperature",
+            "max_tokens",
+            "response_format",
+        }
+        collisions = reserved.intersection(self.extra_body)
+        if collisions:
+            names = ", ".join(sorted(collisions))
+            raise ValueError(
+                f"extra_body cannot override reserved request fields: {names}"
+            )
+
+        payload.update(self.extra_body)
+        return payload
+
+    def probe_sender_epistemics(
+        self,
+        observation: PlayerObservation,
+        private_instruction: str,
+        sender_goal: str,
+        hint_effects: list[dict[str, Any]],
+    ) -> SenderEpistemicProbeDecision:
+        raw = ""
+        data: dict[str, Any] | None = None
+        try:
+            payload = self._sender_epistemic_probe_payload(
+                observation,
+                private_instruction,
+                sender_goal,
+                hint_effects,
+            )
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            with httpx.Client(timeout=self.timeout_s) as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            message = data["choices"][0]["message"]
+            raw, response_channel = _select_response_text(message)
+            parsed = _extract_json_object(raw)
+
+            required = {
+                "convention_hint_index",
+                "receiver_convention_knowledge",
+            }
+            if set(parsed) != required:
+                raise ValueError(
+                    "Sender probe response must contain exactly "
+                    "convention_hint_index and receiver_convention_knowledge"
+                )
+
+            hint_index = parsed["convention_hint_index"]
+            allowed_hint_indices = {
+                -1,
+                *(
+                    int(item["action_index"])
+                    for item in hint_effects
+                ),
+            }
+            if isinstance(hint_index, bool) or not isinstance(hint_index, int):
+                raise ValueError("convention_hint_index must be an integer")
+            if hint_index not in allowed_hint_indices:
+                raise ValueError(
+                    f"convention_hint_index {hint_index} is not allowed"
+                )
+
+            receiver_knowledge = parsed["receiver_convention_knowledge"]
+            if receiver_knowledge not in {
+                "no_convention",
+                "unknown",
+                "known",
+            }:
+                raise ValueError(
+                    "receiver_convention_knowledge must be one of "
+                    "no_convention, unknown, known"
+                )
+
+            return SenderEpistemicProbeDecision(
+                convention_hint_index=hint_index,
+                receiver_convention_knowledge=receiver_knowledge,
+                raw_response=raw,
+                response_channel=response_channel,
+                api_response=data,
+            )
+        except Exception as exc:
+            return SenderEpistemicProbeDecision(
+                convention_hint_index=None,
+                receiver_convention_knowledge=None,
                 raw_response=raw or None,
                 response_channel=(
                     response_channel
