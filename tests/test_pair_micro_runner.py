@@ -1,5 +1,8 @@
 from hanabi_ck.actions import Action
-from hanabi_ck.pair_micro_runner import aggregate_pair_samples
+from hanabi_ck.pair_micro_runner import (
+    _expected_receiver_convention_knowledge,
+    aggregate_pair_samples,
+)
 
 
 def _sample(
@@ -60,3 +63,61 @@ def test_pair_aggregation_distinguishes_newest_from_safe_coordination():
     assert result["sender_convention_hint_rate"] == 2 / 3
     assert result["sender_hint_counts"] == {"rank=1": 2, "rank=2": 1}
     assert result["receiver_newest_given_convention_hint_rate"] == 0.5
+
+
+def test_sender_probe_epistemic_expectations_follow_ck_ladder():
+    assert _expected_receiver_convention_knowledge("ck0") == "no_convention"
+    assert _expected_receiver_convention_knowledge("ck1_private") == "unknown"
+    assert _expected_receiver_convention_knowledge("ck2_shared") == "unknown"
+    assert _expected_receiver_convention_knowledge("ck3_mutual") == "known"
+    assert _expected_receiver_convention_knowledge("ck_inf_common") == "known"
+
+
+def test_pair_aggregation_separates_probe_knowledge_from_action():
+    samples = [
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=1,
+                receiver_safe=True,
+                safe_success=False,
+                chain_success=False,
+                sender_hint_label="color=B",
+            ),
+            "sender_model_action_index": 2,
+            "sender_probe_enabled": True,
+            "sender_probe_valid": True,
+            "sender_probe_convention_hint_index": 6,
+            "sender_probe_identified_convention_hint": True,
+            "sender_probe_mapping_correct": True,
+            "sender_probe_receiver_convention_knowledge": "known",
+            "sender_probe_partner_knowledge_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+            ),
+            "sender_model_action_index": 6,
+            "sender_probe_enabled": True,
+            "sender_probe_valid": True,
+            "sender_probe_convention_hint_index": 6,
+            "sender_probe_identified_convention_hint": True,
+            "sender_probe_mapping_correct": True,
+            "sender_probe_receiver_convention_knowledge": "known",
+            "sender_probe_partner_knowledge_correct": True,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+
+    assert result["sender_convention_hint_rate"] == 0.5
+    assert result["sender_probe_identified_convention_hint_rate"] == 1.0
+    assert result["sender_probe_mapping_accuracy"] == 1.0
+    assert result["sender_probe_partner_knowledge_accuracy"] == 1.0
+    assert result["sender_probe_knowledge_to_action_gap"] == 0.5
+    assert result["sender_action_matches_probe_hint_rate"] == 0.5
+    assert result["sender_probe_partner_knowledge_counts"] == {"known": 2}
