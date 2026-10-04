@@ -92,6 +92,16 @@ def main() -> None:
                     "paired_convention_chain_vs_baseline": (
                         summary["paired_convention_chain_vs_baseline"]
                     ),
+                    "paired_sender_probe_identification_vs_baseline": (
+                        summary[
+                            "paired_sender_probe_identification_vs_baseline"
+                        ]
+                    ),
+                    "paired_sender_probe_request_hash_comparisons": (
+                        summary[
+                            "paired_sender_probe_request_hash_comparisons"
+                        ]
+                    ),
                     "paired_sender_request_hash_comparisons": (
                         summary["paired_sender_request_hash_comparisons"]
                     ),
