@@ -47,6 +47,22 @@ def _hint_label(action: Action) -> str:
     return f"{action.attribute}={action.value}"
 
 
+def _expected_receiver_convention_knowledge(condition: str) -> str:
+    expected = {
+        "ck0": "no_convention",
+        "ck1_private": "unknown",
+        "ck2_shared": "unknown",
+        "ck3_mutual": "known",
+        "ck_inf_common": "known",
+    }
+    try:
+        return expected[condition]
+    except KeyError as exc:
+        raise ValueError(
+            f"No sender-probe epistemic expectation for condition {condition!r}"
+        ) from exc
+
+
 def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     valid = [sample for sample in samples if sample["valid"]]
     if not valid:
@@ -60,6 +76,14 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "safe_coordination_success_rate": None,
             "convention_chain_success_rate": None,
             "receiver_newest_given_convention_hint_rate": None,
+            "sender_probe_valid_count": 0,
+            "sender_probe_error_count": 0,
+            "sender_probe_identified_convention_hint_rate": None,
+            "sender_probe_mapping_accuracy": None,
+            "sender_probe_partner_knowledge_accuracy": None,
+            "sender_probe_partner_knowledge_counts": {},
+            "sender_probe_knowledge_to_action_gap": None,
+            "sender_action_matches_probe_hint_rate": None,
         }
 
     sender_trigger_count = sum(
@@ -89,6 +113,40 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     sender_hint_counts = Counter(
         sample["sender_hint_label"]
         for sample in valid
+    )
+    probe_valid = [
+        sample for sample in valid
+        if sample.get("sender_probe_valid") is True
+    ]
+    probe_enabled = [
+        sample for sample in valid
+        if sample.get("sender_probe_enabled")
+    ]
+    probe_identified_count = sum(
+        bool(sample.get("sender_probe_identified_convention_hint"))
+        for sample in probe_valid
+    )
+    probe_mapping_correct_count = sum(
+        bool(sample.get("sender_probe_mapping_correct"))
+        for sample in probe_valid
+    )
+    probe_partner_correct_count = sum(
+        bool(sample.get("sender_probe_partner_knowledge_correct"))
+        for sample in probe_valid
+    )
+    probe_partner_counts = Counter(
+        str(sample.get("sender_probe_receiver_convention_knowledge"))
+        for sample in probe_valid
+    )
+    probe_action_match_count = sum(
+        sample.get("sender_probe_convention_hint_index")
+        == sample.get("sender_model_action_index")
+        for sample in probe_valid
+        if sample.get("sender_probe_convention_hint_index") != -1
+    )
+    probe_action_match_denominator = sum(
+        sample.get("sender_probe_convention_hint_index") != -1
+        for sample in probe_valid
     )
 
     return {
@@ -147,6 +205,37 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             )
             else None
         ),
+        "sender_probe_valid_count": len(probe_valid),
+        "sender_probe_error_count": len(probe_enabled) - len(probe_valid),
+        "sender_probe_identified_convention_hint_rate": (
+            probe_identified_count / len(probe_valid)
+            if probe_valid
+            else None
+        ),
+        "sender_probe_mapping_accuracy": (
+            probe_mapping_correct_count / len(probe_valid)
+            if probe_valid
+            else None
+        ),
+        "sender_probe_partner_knowledge_accuracy": (
+            probe_partner_correct_count / len(probe_valid)
+            if probe_valid
+            else None
+        ),
+        "sender_probe_partner_knowledge_counts": dict(
+            sorted(probe_partner_counts.items())
+        ),
+        "sender_probe_knowledge_to_action_gap": (
+            probe_identified_count / len(probe_valid)
+            - sender_trigger_count / len(valid)
+            if probe_valid
+            else None
+        ),
+        "sender_action_matches_probe_hint_rate": (
+            probe_action_match_count / probe_action_match_denominator
+            if probe_action_match_denominator
+            else None
+        ),
     }
 
 
@@ -199,6 +288,10 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
 
     sample_seed_start = int(cfg.get("sample_seed_start", 0))
     receiver_seed_offset = int(cfg.get("receiver_seed_offset", 1_000_000))
+    sender_probe = bool(cfg.get("sender_shadow_probe", False))
+    sender_probe_seed_offset = int(
+        cfg.get("sender_probe_seed_offset", 2_000_000)
+    )
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
     sender_action_order_seed = int(
@@ -248,6 +341,9 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             }
             for index, action in enumerate(sender_actions)
         ]
+        sender_convention_hint_index = sender_actions.index(
+            scenario.convention_trigger_hint
+        )
 
         for condition_order_index, condition_name in enumerate(condition_order):
             condition = get_condition(condition_name)
@@ -312,6 +408,90 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 logger.write(record)
                 all_samples.append(record)
                 continue
+
+            sender_probe_seed: int | None = None
+            sender_probe_request_hash: str | None = None
+            sender_probe_valid = False
+            sender_probe_error: str | None = None
+            sender_probe_convention_hint_index: int | None = None
+            sender_probe_receiver_knowledge: str | None = None
+            sender_probe_raw_response: str | None = None
+            sender_probe_response_channel: str | None = None
+            sender_probe_api_response: dict[str, Any] | None = None
+
+            if sender_probe:
+                sender_probe_seed = sender_probe_seed_offset + sender_seed
+                sender_probe_spec = _agent_spec_for_sample(
+                    sender_spec_base,
+                    sample_seed=sender_probe_seed,
+                    vary_api_seed=vary_api_seed,
+                )
+                sender_probe_agent = _build_agent(
+                    sender_probe_spec,
+                    seed=sender_probe_seed,
+                )
+                if not isinstance(
+                    sender_probe_agent,
+                    OpenAICompatibleAgent,
+                ):
+                    raise RuntimeError(
+                        "sender shadow probe requires OpenAICompatibleAgent"
+                    )
+                sender_probe_request_hash = _payload_hash(
+                    sender_probe_agent._sender_epistemic_probe_payload(
+                        scenario.sender_observation,
+                        sender_condition_instruction,
+                        scenario.sender_goal,
+                        sender_hint_effects,
+                    )
+                )
+                probe_decision = sender_probe_agent.probe_sender_epistemics(
+                    scenario.sender_observation,
+                    sender_condition_instruction,
+                    scenario.sender_goal,
+                    sender_hint_effects,
+                )
+                sender_probe_valid = (
+                    probe_decision.parse_error is None
+                    and probe_decision.convention_hint_index is not None
+                    and probe_decision.receiver_convention_knowledge is not None
+                )
+                sender_probe_error = probe_decision.parse_error
+                sender_probe_convention_hint_index = (
+                    probe_decision.convention_hint_index
+                )
+                sender_probe_receiver_knowledge = (
+                    probe_decision.receiver_convention_knowledge
+                )
+                sender_probe_raw_response = probe_decision.raw_response
+                sender_probe_response_channel = (
+                    probe_decision.response_channel
+                )
+                sender_probe_api_response = probe_decision.api_response
+
+            expected_probe_hint_index = (
+                -1
+                if condition_name == "ck0"
+                else sender_convention_hint_index
+            )
+            expected_receiver_knowledge = (
+                _expected_receiver_convention_knowledge(condition_name)
+            )
+            sender_probe_identified_convention_hint = (
+                sender_probe_valid
+                and sender_probe_convention_hint_index
+                == sender_convention_hint_index
+            )
+            sender_probe_mapping_correct = (
+                sender_probe_valid
+                and sender_probe_convention_hint_index
+                == expected_probe_hint_index
+            )
+            sender_probe_partner_knowledge_correct = (
+                sender_probe_valid
+                and sender_probe_receiver_knowledge
+                == expected_receiver_knowledge
+            )
 
             receiver_observation = (
                 scenario.receiver_observation_after_hint(sender_action)
@@ -398,6 +578,43 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "sender_request_payload_hash": sender_request_hash,
                 "receiver_request_payload_hash": receiver_request_hash,
+                "sender_probe_enabled": sender_probe,
+                "sender_probe_seed": sender_probe_seed,
+                "sender_probe_request_payload_hash": (
+                    sender_probe_request_hash
+                ),
+                "sender_probe_valid": sender_probe_valid,
+                "sender_probe_error": sender_probe_error,
+                "sender_probe_expected_hint_index": expected_probe_hint_index,
+                "sender_probe_convention_hint_index": (
+                    sender_probe_convention_hint_index
+                ),
+                "sender_probe_identified_convention_hint": (
+                    sender_probe_identified_convention_hint
+                ),
+                "sender_probe_mapping_correct": sender_probe_mapping_correct,
+                "sender_probe_expected_receiver_convention_knowledge": (
+                    expected_receiver_knowledge
+                ),
+                "sender_probe_receiver_convention_knowledge": (
+                    sender_probe_receiver_knowledge
+                ),
+                "sender_probe_partner_knowledge_correct": (
+                    sender_probe_partner_knowledge_correct
+                ),
+                "sender_probe_response_channel": (
+                    sender_probe_response_channel
+                ),
+                "sender_probe_raw_response": (
+                    sender_probe_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_probe_api_response": (
+                    sender_probe_api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
                 "sender_goal": scenario.sender_goal,
                 "sender_observation": scenario.sender_observation.to_dict(),
                 "sender_legal_hints": [
@@ -494,6 +711,26 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         field="convention_chain_success",
         valid_field="valid",
     )
+    sender_probe_identification_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_probe_identified_convention_hint",
+            valid_field="sender_probe_valid",
+        )
+        if sender_probe
+        else {}
+    )
+    sender_probe_request_hash_pairwise = (
+        _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="sender_probe_request_payload_hash",
+            valid_field="sender_probe_valid",
+        )
+        if sender_probe
+        else {}
+    )
     sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
         all_samples,
         conditions,
@@ -514,6 +751,8 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "repetitions": repetitions,
         "conditions": conditions,
         "ck1_informed_players": sorted(ck1_informed_players),
+        "sender_shadow_probe": sender_probe,
+        "sender_probe_seed_offset": sender_probe_seed_offset,
         "aggregate_by_condition": aggregate_by_condition,
         "paired_receiver_comparisons": receiver_pairwise,
         "paired_receiver_vs_baseline": _comparisons_vs_baseline(
@@ -531,6 +770,20 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "paired_convention_chain_vs_baseline": _comparisons_vs_baseline(
             convention_chain_pairwise,
             baseline,
+        ),
+        "paired_sender_probe_identification_comparisons": (
+            sender_probe_identification_pairwise
+        ),
+        "paired_sender_probe_identification_vs_baseline": (
+            _comparisons_vs_baseline(
+                sender_probe_identification_pairwise,
+                baseline,
+            )
+            if sender_probe_identification_pairwise
+            else {}
+        ),
+        "paired_sender_probe_request_hash_comparisons": (
+            sender_probe_request_hash_pairwise
         ),
         "paired_sender_request_hash_comparisons": (
             sender_request_hash_pairwise
