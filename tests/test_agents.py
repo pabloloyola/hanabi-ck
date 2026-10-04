@@ -232,3 +232,50 @@ def test_intention_probe_payload_constrains_candidate_card_indices():
     assert schema["properties"]["intended_card_index"]["enum"] == [1, 2, 4]
     assert schema["additionalProperties"] is False
     assert "legal_actions" not in payload["messages"][1]["content"]
+
+
+def test_sender_epistemic_probe_payload_constrains_hint_and_knowledge():
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+    agent = OpenAICompatibleAgent(
+        name="qwen",
+        model="qwen/qwen3.8-27b",
+        structured_output=True,
+    )
+    hint_effects = [
+        {
+            "action_index": 0,
+            "action": Action.hint(1, "rank", 3).to_dict(),
+            "touched_indices": [3],
+        },
+        {
+            "action_index": 4,
+            "action": Action.hint(1, "rank", 1).to_dict(),
+            "touched_indices": [1, 2, 4],
+        },
+    ]
+
+    payload = agent._sender_epistemic_probe_payload(
+        observation,
+        "TEST CONVENTION",
+        "Communicate that the receiver should play their newest card.",
+        hint_effects,
+    )
+    schema = payload["response_format"]["json_schema"]["schema"]
+
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == [
+        "convention_hint_index",
+        "receiver_convention_knowledge",
+    ]
+    assert schema["properties"]["convention_hint_index"]["enum"] == [-1, 0, 4]
+    assert schema["properties"]["receiver_convention_knowledge"]["enum"] == [
+        "no_convention",
+        "unknown",
+        "known",
+    ]
+    user = payload["messages"][1]["content"]
+    assert "touched_indices" in user
+    assert "communication_goal" in user
