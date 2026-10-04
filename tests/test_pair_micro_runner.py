@@ -9,10 +9,16 @@ def _sample(
     receiver_safe: bool,
     safe_success: bool,
     chain_success: bool,
+    sender_hint_label: str | None = None,
 ):
     return {
         "valid": True,
         "sender_used_convention_hint": sender_trigger,
+        "sender_hint_label": (
+            sender_hint_label
+            if sender_hint_label is not None
+            else ("rank=1" if sender_trigger else "rank=2")
+        ),
         "receiver_selected_newest": receiver_index == 4,
         "receiver_action": Action.play(receiver_index).to_dict(),
         "receiver_epistemically_safe_play": receiver_safe,
@@ -52,4 +58,5 @@ def test_pair_aggregation_distinguishes_newest_from_safe_coordination():
     assert result["safe_coordination_success_rate"] == 1 / 3
     assert result["convention_chain_success_rate"] == 1 / 3
     assert result["sender_convention_hint_rate"] == 2 / 3
+    assert result["sender_hint_counts"] == {"rank=1": 2, "rank=2": 1}
     assert result["receiver_newest_given_convention_hint_rate"] == 0.5
