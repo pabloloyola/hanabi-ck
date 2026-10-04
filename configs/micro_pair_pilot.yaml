@@ -1,0 +1,49 @@
+experiment: micro_pair_pilot_revised
+output_dir: runs
+
+scenario: sender_receiver_newest_intent
+conditions:
+  - ck0
+  - ck1_private
+  - ck2_shared
+  - ck3_mutual
+  - ck_inf_common
+
+# CK1 is deliberately asymmetric: only the sender knows the convention.
+ck1_informed_players: [0]
+
+# Revised-scenario gate: 20 reps are enough to see whether informed senders
+# actually select the convention-triggering rank-1 hint before scaling to 100.
+repetitions: 20
+sample_seed_start: 0
+receiver_seed_offset: 1000000
+vary_api_seed: true
+shuffle_legal_actions: true
+sender_action_order_seed: 20262001
+receiver_action_order_seed: 20262002
+condition_order_seed: 20262003
+
+convention: >-
+  If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played
+  as soon as it is safe to do so.
+
+agent:
+  type: openai_compatible
+  name: qwen_pair_pilot
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  temperature: 0.7
+  timeout_s: 300
+  max_tokens: 256
+  structured_output: true
+  extra_body:
+    top_p: 0.8
+    top_k: 20
+    presence_penalty: 1.5
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
+
+agent_error_policy: abort
+log_raw_model_responses: true
