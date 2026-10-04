@@ -335,12 +335,12 @@ The micro runner now:
 
 \section{Two-agent sender to receiver diagnostic}
 
-The next experiment tests both convention encoding and decoding. P0 is given the goal to communicate that P1 should play newest card 4, but P0 may use only one legal Hanabi hint. P1 then receives the observation caused by that actual hint and chooses an action.
+The next experiment tests both convention encoding and decoding. P0 is given the goal to communicate that P1 should play their newest card, but P0 may use only one legal Hanabi hint. The sender-facing goal deliberately avoids the numeric slot label so it cannot be mistaken for a rank value. The revised hand also removes rank 4 as a legal sender hint while preserving the rank-1 convention trigger on slots 1, 2, and 4. P1 then receives the observation caused by the actual hint and chooses an action.
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[node distance=9mm and 9mm,every node/.style={font=\small,align=center}]
-\node[draw=navy,thick,rounded corners,fill=lightblue,minimum width=35mm,minimum height=14mm] (goal) {Sender goal\\play newest 4};
+\node[draw=navy,thick,rounded corners,fill=lightblue,minimum width=35mm,minimum height=14mm] (goal) {Sender goal\\play newest};
 \node[draw=blue,thick,rounded corners,fill=blue!8,right=of goal,minimum width=35mm,minimum height=14mm] (sender) {P0 chooses\\one legal hint};
 \node[draw=red,thick,rounded corners,fill=red!7,right=of sender,minimum width=35mm,minimum height=14mm] (obs) {Hint changes\\P1 knowledge};
 \node[draw=teal!80!black,thick,rounded corners,fill=teal!8,right=of obs,minimum width=35mm,minimum height=14mm] (recv) {P1 decodes\\and acts};
@@ -349,6 +349,10 @@ The next experiment tests both convention encoding and decoding. P0 is given the
 \draw[-{Latex[length=3mm]},thick] (obs)--(recv);
 \end{tikzpicture}
 \end{figure}
+
+For the sender, each legal hint is additionally annotated with its deterministic
+\texttt{touched\_indices}, which are derivable from the visible receiver hand.
+This removes an unnecessary mechanical reasoning burden from the diagnostic.
 
 This lets us ask:
 \begin{itemize}
@@ -359,6 +363,10 @@ This lets us ask:
 \end{itemize}
 
 \begin{lstlisting}[language=bash]
+# Revised-scenario pilot first
+uv run hanabi-ck micro-pair configs/micro_pair_pilot.yaml
+
+# Scale only if sender convention use is healthy
 uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
 \end{lstlisting}
 
