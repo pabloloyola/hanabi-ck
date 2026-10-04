@@ -145,12 +145,16 @@ the low-cost smoke run, then scale to the full 100-repetition experiment:
 
 ```bash
 uv run hanabi-ck micro-pair configs/micro_pair_smoke.yaml
+uv run hanabi-ck micro-pair configs/micro_pair_pilot.yaml
 uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
 ```
 
 P0 is given a fixed communication goal: use exactly one legal Hanabi hint to
-communicate that P1 should play newest card 4. P1 then receives the observation
-produced by that actual hint and chooses an action. The pair runner reports the
+communicate that P1 should play their newest card. The goal deliberately avoids
+naming the numeric slot index, so it cannot be confused with a rank value. The
+revised receiver hand also removes rank 4 as a legal sender hint while preserving
+the convention-triggering rank-1 touch set [1, 2, 4]. P1 then receives the
+observation produced by the actual hint and chooses an action. The pair runner reports the
 sender's convention-triggering rank-hint rate, the receiver's newest-card rate,
 and receiver success conditional on the sender using the convention-triggering
 hint.
@@ -158,6 +162,12 @@ hint.
 For CK1 in this pair experiment, only the sender is informed
 (`ck1_informed_players: [0]`). This creates the useful asymmetric case where
 the sender may encode with a convention that the receiver cannot assume.
+
+The sender prompt also receives a deterministic annotation of each legal hint's
+`touched_indices`. These are mechanically derivable from the visible receiver
+hand and are exposed so the diagnostic measures convention use rather than the
+model's ability to mentally simulate hint effects. The 20-repetition
+`micro_pair_pilot.yaml` is the gate before another 100-repetition run.
 
 ## Common-knowledge ladder
 
@@ -277,6 +287,7 @@ configs/
   lmstudio.yaml
   micro_newest.yaml
   micro_pair_smoke.yaml
+  micro_pair_pilot.yaml
   micro_pair_newest.yaml
 
 tests/
