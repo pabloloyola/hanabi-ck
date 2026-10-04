@@ -41,6 +41,12 @@ def _shuffle_actions(
     return out
 
 
+def _hint_label(action: Action) -> str:
+    if action.type != "hint":
+        return action.type
+    return f"{action.attribute}={action.value}"
+
+
 def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     valid = [sample for sample in samples if sample["valid"]]
     if not valid:
@@ -49,6 +55,7 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "n_valid_samples": 0,
             "n_error_samples": len(samples),
             "sender_convention_hint_rate": None,
+            "sender_hint_counts": {},
             "receiver_newest_rate": None,
             "safe_coordination_success_rate": None,
             "convention_chain_success_rate": None,
@@ -79,6 +86,10 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         sample["receiver_action"]["type"]
         for sample in valid
     )
+    sender_hint_counts = Counter(
+        sample["sender_hint_label"]
+        for sample in valid
+    )
 
     return {
         "n_samples": len(samples),
@@ -90,6 +101,7 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             sender_trigger_count,
             len(valid),
         ),
+        "sender_hint_counts": dict(sorted(sender_hint_counts.items())),
         "receiver_newest_count": receiver_newest_count,
         "receiver_newest_rate": receiver_newest_count / len(valid),
         "receiver_newest_rate_ci95_wilson": _wilson_interval(
@@ -226,6 +238,16 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             seed=sender_action_order_seed + repetition,
             enabled=shuffle_actions,
         )
+        sender_hint_effects = [
+            {
+                "action_index": index,
+                "action": action.to_dict(),
+                "touched_indices": list(
+                    scenario.touched_indices_for_hint(action)
+                ),
+            }
+            for index, action in enumerate(sender_actions)
+        ]
 
         for condition_order_index, condition_name in enumerate(condition_order):
             condition = get_condition(condition_name)
@@ -250,6 +272,11 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 sender_condition_instruction
                 + "\n\nDIAGNOSTIC COMMUNICATION GOAL:\n"
                 + scenario.sender_goal
+                + "\n\nPUBLIC MECHANICAL HINT EFFECTS:\n"
+                + "The following touched_indices are deterministic consequences "
+                + "of the visible receiver hand, not hidden information. Use them "
+                + "to reason about which legal hint communicates the goal:\n"
+                + json.dumps(sender_hint_effects, ensure_ascii=False)
             )
             sender_request_hash = _payload_hash(
                 sender._request_payload(
@@ -376,8 +403,13 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "sender_legal_hints": [
                     action.to_dict() for action in sender_actions
                 ],
+                "sender_hint_effects": sender_hint_effects,
                 "sender_model_action_index": sender_decision.action_index,
                 "sender_action": sender_action.to_dict(),
+                "sender_hint_label": _hint_label(sender_action),
+                "sender_touched_indices": list(
+                    scenario.touched_indices_for_hint(sender_action)
+                ),
                 "sender_used_convention_hint": (
                     sender_action == scenario.convention_trigger_hint
                 ),
