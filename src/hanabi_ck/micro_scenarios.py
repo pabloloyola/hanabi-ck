@@ -72,6 +72,22 @@ class PairMicroScenario:
         if self.receiver_target_action.card_index != 4:
             raise ValueError("starter pair micro targets newest card index 4")
 
+    def touched_indices_for_hint(self, hint: Action) -> tuple[int, ...]:
+        if hint not in self.sender_hint_actions:
+            raise ValueError("hint is not a sender candidate")
+        if hint.target != self.receiver_player:
+            raise ValueError("hint targets the wrong receiver")
+
+        touched: list[int] = []
+        for index, card in enumerate(self.receiver_hand_truth):
+            if hint.attribute == "color":
+                if card["color"] == str(hint.value):
+                    touched.append(index)
+            else:
+                if int(card["rank"]) == int(hint.value):
+                    touched.append(index)
+        return tuple(touched)
+
     def receiver_observation_after_hint(
         self,
         hint: Action,
@@ -86,7 +102,7 @@ class PairMicroScenario:
             for _ in self.receiver_hand_truth
         ]
         after: list[dict[str, Any]] = []
-        touched: list[int] = []
+        touched = list(self.touched_indices_for_hint(hint))
 
         for index, (card, knowledge) in enumerate(
             zip(self.receiver_hand_truth, before)
@@ -98,7 +114,6 @@ class PairMicroScenario:
                 matches = card["color"] == value
                 if matches:
                     colors.intersection_update({value})
-                    touched.append(index)
                 else:
                     colors.discard(value)
             else:
@@ -106,7 +121,6 @@ class PairMicroScenario:
                 matches = int(card["rank"]) == value
                 if matches:
                     ranks.intersection_update({value})
-                    touched.append(index)
                 else:
                     ranks.discard(value)
             after.append(
@@ -335,8 +349,8 @@ def newest_rank1_three_safe() -> MicroScenario:
 def sender_receiver_newest_intent() -> PairMicroScenario:
     """Two-step communication test: sender hints, receiver decodes.
 
-    P0 is explicitly tasked with communicating that P1 should play newest card
-    index 4. P0 can only choose a legal Hanabi hint; there is no free-form chat.
+    P0 is explicitly tasked with communicating that P1 should play their newest
+    card. P0 can only choose a legal Hanabi hint; there is no free-form chat.
     The rank-1 hint touches cards 1, 2, and newest card 4, making those three
     cards provably playable for P1. Under the experimental convention, the
     newest touched card is the intended target.
@@ -351,7 +365,7 @@ def sender_receiver_newest_intent() -> PairMicroScenario:
         {"color": "G", "rank": 5},
     )
     receiver_hand = (
-        {"color": "W", "rank": 4},
+        {"color": "W", "rank": 2},
         {"color": "R", "rank": 1},
         {"color": "Y", "rank": 1},
         {"color": "B", "rank": 3},
@@ -397,8 +411,8 @@ def sender_receiver_newest_intent() -> PairMicroScenario:
     scenario = PairMicroScenario(
         name="sender_receiver_newest_intent",
         description=(
-            "P0 must communicate that P1 should play newest card 4 using only "
-            "one legal hint. P1 then acts from the resulting observation."
+            "P0 must communicate that P1 should play their newest card using "
+            "only one legal hint. P1 then acts from the resulting observation."
         ),
         num_players=2,
         sender_player=sender_player,
@@ -411,7 +425,7 @@ def sender_receiver_newest_intent() -> PairMicroScenario:
         sender_hand_truth=sender_hand,
         sender_goal=(
             "Communicate, using exactly one legal Hanabi hint and no free-form "
-            "chat, that Player 1 should play their newest card (card index 4)."
+            "chat, that Player 1 should play their newest card."
         ),
     )
     scenario.validate()
