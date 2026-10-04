@@ -354,6 +354,25 @@ For the sender, each legal hint is additionally annotated with its deterministic
 \texttt{touched\_indices}, which are derivable from the visible receiver hand.
 This removes an unnecessary mechanical reasoning burden from the diagnostic.
 
+The revised pilot still showed sparse sender use of the convention-triggering
+hint. To separate comprehension from behavior, the pair harness therefore adds
+a stateless sender-side shadow probe after the sender action. It asks which
+indexed hint invokes the convention and whether the sender can infer that the
+receiver's convention knowledge is \texttt{no\_convention},
+\texttt{unknown}, or \texttt{known}. The probe is never fed back into the
+sender or receiver action context.
+
+This lets us distinguish:
+\[
+\text{convention mapping}
+\rightarrow
+\text{partner-knowledge model}
+\rightarrow
+\text{sender action}
+\rightarrow
+\text{receiver action}.
+\]
+
 This lets us ask:
 \begin{itemize}
 \item Does the sender choose the convention-triggering hint?
@@ -363,10 +382,13 @@ This lets us ask:
 \end{itemize}
 
 \begin{lstlisting}[language=bash]
-# Revised-scenario pilot first
+# Revised-scenario pilot
 uv run hanabi-ck micro-pair configs/micro_pair_pilot.yaml
 
-# Scale only if sender convention use is healthy
+# Diagnose sender comprehension and partner knowledge
+uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
+
+# Scale only after the sender mechanism is understood
 uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
 \end{lstlisting}
 
