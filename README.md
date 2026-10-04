@@ -47,7 +47,8 @@ OpenAI-compatible. Omit `base_url` and `api_key` from YAML and set
 `OPENAI_BASE_URL` / `OPENAI_API_KEY`, or provide them in the agent spec.
 For providers that do not accept a request `seed`, set
 `vary_api_seed: false`. Provider-specific LM Studio/Qwen fields in
-`extra_body` should be removed when switching providers.
+`extra_body` should be removed when switching providers. A clean template is
+available at `configs/micro_pair_probe_api.example.yaml`.
 
 The LLM chooses from an indexed list of legal actions and returns only
 `{"action_index": N}`. This avoids ambiguous action-shaped JSON and lets the
