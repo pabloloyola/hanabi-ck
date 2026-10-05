@@ -210,6 +210,40 @@ uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
 That pilot uses 20 repetitions and makes 300 calls: sender action, sender shadow
 probe, and receiver action for each condition/repetition.
 
+### CK2 -> CK3 epistemic-reliance diagnostic
+
+The original pair scenario can separate "receiver has the convention" from
+"receiver does not have it", but a strong model may use the convention even when
+the sender is unsure whether the receiver has it. The
+`sender_reliance_ck2_ck3` scenario therefore makes the sender choose between:
+
+- a robust rank-1 hint that does not trigger the convention and mechanically
+  leaves only the newest card provably playable;
+- a rank-2 convention hint that leaves three cards provably playable and is
+  therefore only unambiguous when the sender can rely on the receiver knowing
+  the convention.
+
+Reliability is primary; if both routes are reliable, the sender is asked to
+prefer the more informative hint. The predicted sender switch is therefore:
+
+`ck0/ck1_private/ck2_shared -> robust` and
+`ck3_mutual/ck_inf_common -> convention`.
+
+Run the five-repetition DeepSeek/OpenRouter pilot with:
+
+```bash
+export OPENROUTER_API_KEY=...
+uv run hanabi-ck micro-pair \
+  configs/micro_pair_reliance_openrouter_deepseek_v4_flash.yaml
+```
+
+The summary reports `sender_robust_hint_rate`,
+`sender_epistemic_choice_accuracy`, and pairwise comparisons of
+`sender_used_convention_hint` in addition to the existing receiver and probe
+metrics. This scenario is specifically aimed at the CK2 -> CK3 transition,
+where the sender's own convention text is no longer enough: it must know that
+the receiver also has the convention.
+
 
 ### Cross-model screen on the Rakuten OpenAI-compatible endpoint
 
