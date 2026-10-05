@@ -344,7 +344,7 @@ class OpenAICompatibleAgent:
         model: str,
         base_url: str | None = None,
         api_key: str | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = 0.0,
         timeout_s: float = 60.0,
         max_tokens: int | None = None,
         extra_body: dict[str, Any] | None = None,
@@ -441,8 +441,9 @@ Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
                 legal_actions,
                 private_instruction,
             ),
-            "temperature": self.temperature,
         }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
         if self.max_tokens is not None:
             payload["max_tokens"] = self.max_tokens
 
@@ -527,8 +528,9 @@ Return ONLY JSON of the form {"intended_card_index": N}."""
                 trigger_hint,
                 candidate_card_indices,
             ),
-            "temperature": self.temperature,
         }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
         if self.max_tokens is not None:
             payload["max_tokens"] = self.max_tokens
 
@@ -692,8 +694,9 @@ Return ONLY JSON with exactly:
                 sender_goal,
                 hint_effects,
             ),
-            "temperature": self.temperature,
         }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
         if self.max_tokens is not None:
             payload["max_tokens"] = self.max_tokens
 
