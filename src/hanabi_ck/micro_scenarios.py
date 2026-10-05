@@ -60,7 +60,11 @@ class PairMicroScenario:
     receiver_target_action: Action
     receiver_hand_truth: tuple[dict[str, Any], ...]
     sender_hand_truth: tuple[dict[str, Any], ...]
+    receiver_initial_knowledge: tuple[dict[str, Any], ...]
+    stacks: dict[str, int]
     sender_goal: str
+    robust_hint: Action | None = None
+    epistemic_reliance_test: bool = False
 
     def validate(self) -> None:
         if self.convention_trigger_hint not in self.sender_hint_actions:
@@ -71,6 +75,24 @@ class PairMicroScenario:
             raise ValueError("pair micro receiver target must be a play")
         if self.receiver_target_action.card_index != 4:
             raise ValueError("starter pair micro targets newest card index 4")
+        if len(self.receiver_initial_knowledge) != len(self.receiver_hand_truth):
+            raise ValueError("receiver initial knowledge must match hand size")
+        if self.robust_hint is not None and self.robust_hint not in self.sender_hint_actions:
+            raise ValueError("robust hint must be a sender candidate")
+        if self.epistemic_reliance_test:
+            if self.robust_hint is None:
+                raise ValueError("epistemic reliance test requires a robust hint")
+            if self.robust_hint == self.convention_trigger_hint:
+                raise ValueError("robust and convention hints must differ")
+
+    def expected_sender_hint_for_condition(self, condition: str) -> Action | None:
+        if not self.epistemic_reliance_test:
+            return None
+        if condition in {"ck0", "ck1_private", "ck2_shared"}:
+            return self.robust_hint
+        if condition in {"ck3_mutual", "ck_inf_common"}:
+            return self.convention_trigger_hint
+        raise ValueError(f"Unknown CK condition {condition!r}")
 
     def touched_indices_for_hint(self, hint: Action) -> tuple[int, ...]:
         if hint not in self.sender_hint_actions:
@@ -98,8 +120,11 @@ class PairMicroScenario:
             raise ValueError("hint targets the wrong receiver")
 
         before = [
-            _knowledge()
-            for _ in self.receiver_hand_truth
+            {
+                "possible_colors": list(item["possible_colors"]),
+                "possible_ranks": list(item["possible_ranks"]),
+            }
+            for item in self.receiver_initial_knowledge
         ]
         after: list[dict[str, Any]] = []
         touched = list(self.touched_indices_for_hint(hint))
@@ -130,7 +155,7 @@ class PairMicroScenario:
                 }
             )
 
-        stacks = {color: 0 for color in COLORS}
+        stacks = dict(self.stacks)
         playable, obsolete, safety = play_safety_annotations(after, stacks)
         public_knowledge = {
             self.sender_player: [_knowledge() for _ in self.sender_hand_truth],
@@ -423,6 +448,8 @@ def sender_receiver_newest_intent() -> PairMicroScenario:
         receiver_target_action=Action.play(4),
         receiver_hand_truth=receiver_hand,
         sender_hand_truth=sender_hand,
+        receiver_initial_knowledge=tuple(receiver_knowledge),
+        stacks=stacks,
         sender_goal=(
             "Communicate, using exactly one legal Hanabi hint and no free-form "
             "chat, that Player 1 should play their newest card."
@@ -432,8 +459,121 @@ def sender_receiver_newest_intent() -> PairMicroScenario:
     return scenario
 
 
+def sender_reliance_ck2_ck3() -> PairMicroScenario:
+    """Epistemic reliance test targeting the CK2 -> CK3 transition.
+
+    The receiver's newest card is Y2. Before the sender acts, public
+    hint-derived knowledge says that this card is yellow and either rank 1 or
+    rank 2. Every stack is already at rank 1.
+
+    A rank-1 hint does NOT touch the newest card. Its negative information
+    eliminates rank 1 from the newest card, making only that newest card
+    provably playable. This is the robust/self-explanatory route.
+
+    A rank-2 hint touches cards 1, 2, and newest card 4. It makes all three
+    provably playable. Under the experimental convention it additionally
+    designates the newest touched card as intended. Therefore relying on this
+    more informative hint is rational only when the sender knows the receiver
+    also has the convention.
+    """
+    sender_player = 0
+    receiver_player = 1
+    sender_hand = (
+        {"color": "B", "rank": 2},
+        {"color": "B", "rank": 3},
+        {"color": "G", "rank": 3},
+        {"color": "Y", "rank": 1},
+        {"color": "G", "rank": 5},
+    )
+    receiver_hand = (
+        {"color": "W", "rank": 1},
+        {"color": "R", "rank": 2},
+        {"color": "G", "rank": 2},
+        {"color": "B", "rank": 1},
+        {"color": "Y", "rank": 2},
+    )
+
+    sender_knowledge = [_knowledge() for _ in sender_hand]
+    receiver_knowledge = [
+        _knowledge(),
+        _knowledge(),
+        _knowledge(),
+        _knowledge(),
+        _knowledge(colors=("Y",), ranks=(1, 2)),
+    ]
+    stacks = {color: 1 for color in COLORS}
+    playable, obsolete, safety = play_safety_annotations(
+        sender_knowledge,
+        stacks,
+    )
+    sender_observation = PlayerObservation(
+        player_id=sender_player,
+        current_player=sender_player,
+        other_hands={receiver_player: list(receiver_hand)},
+        own_knowledge=sender_knowledge,
+        public_knowledge={
+            sender_player: sender_knowledge,
+            receiver_player: receiver_knowledge,
+        },
+        hand_order="oldest_to_newest",
+        newest_card_index={sender_player: 4, receiver_player: 4},
+        provably_playable_indices=playable,
+        provably_obsolete_indices=obsolete,
+        play_safety=safety,
+        stacks=stacks,
+        discards=[],
+        information_tokens=8,
+        life_tokens=3,
+        deck_size=40,
+        final_turns_remaining=None,
+        history=[],
+    )
+
+    hint_actions: list[Action] = []
+    for color in sorted({card["color"] for card in receiver_hand}):
+        hint_actions.append(Action.hint(receiver_player, "color", color))
+    for rank in sorted({int(card["rank"]) for card in receiver_hand}):
+        hint_actions.append(Action.hint(receiver_player, "rank", rank))
+
+    scenario = PairMicroScenario(
+        name="sender_reliance_ck2_ck3",
+        description=(
+            "P0 must get P1 to play the newest card. A robust rank=1 hint "
+            "makes only the newest card provably playable by negative "
+            "information. A convention-dependent rank=2 hint makes cards "
+            "1, 2, and 4 playable and requires the shared convention to "
+            "select newest card 4. Reliability is primary; if equally "
+            "reliable, the more informative hint is preferred."
+        ),
+        num_players=2,
+        sender_player=sender_player,
+        receiver_player=receiver_player,
+        sender_observation=sender_observation,
+        sender_hint_actions=tuple(hint_actions),
+        convention_trigger_hint=Action.hint(receiver_player, "rank", 2),
+        receiver_target_action=Action.play(4),
+        receiver_hand_truth=receiver_hand,
+        sender_hand_truth=sender_hand,
+        receiver_initial_knowledge=tuple(receiver_knowledge),
+        stacks=stacks,
+        robust_hint=Action.hint(receiver_player, "rank", 1),
+        epistemic_reliance_test=True,
+        sender_goal=(
+            "Get Player 1 to play their newest card on their immediately "
+            "following turn using exactly one legal Hanabi hint. Reliability "
+            "is primary: choose a hint whose intended next action Player 1 "
+            "can infer from information you know they have. If multiple hints "
+            "are equally reliable, prefer the hint that makes more cards "
+            "provably playable for future turns."
+        ),
+    )
+    scenario.validate()
+    return scenario
+
+
 PAIR_SCENARIOS = {
     "sender_receiver_newest_intent": sender_receiver_newest_intent,
+    "sender_reliance_ck2_ck3": sender_reliance_ck2_ck3,
 }
 
 
