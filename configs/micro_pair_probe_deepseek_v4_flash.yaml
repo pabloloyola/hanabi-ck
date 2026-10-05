@@ -1,0 +1,45 @@
+experiment: micro_pair_probe_deepseek_v4_flash
+output_dir: runs
+
+scenario: sender_receiver_newest_intent
+conditions:
+  - ck0
+  - ck1_private
+  - ck2_shared
+  - ck3_mutual
+  - ck_inf_common
+
+ck1_informed_players: [0]
+
+# Cross-model screening run: 5 reps x 5 conditions x
+# (sender action + sender shadow probe + receiver) = 75 calls.
+repetitions: 5
+sample_seed_start: 0
+receiver_seed_offset: 1000000
+sender_shadow_probe: true
+sender_probe_seed_offset: 2000000
+
+# Conservative defaults for the shared OpenAI-compatible endpoint.
+vary_api_seed: false
+shuffle_legal_actions: true
+sender_action_order_seed: 20262001
+receiver_action_order_seed: 20262002
+condition_order_seed: 20262003
+
+convention: >-
+  If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played
+  as soon as it is safe to do so.
+
+agent:
+  type: openai_compatible
+  name: DeepSeek-V4-Flash
+  model: DeepSeek-V4-Flash
+  base_url: https://api-opensource-ai.mde.rakuten-it.com/v1
+  temperature: 0.0
+  timeout_s: 180
+  max_tokens: 256
+  structured_output: true
+
+agent_error_policy: abort
+log_raw_model_responses: true
