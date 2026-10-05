@@ -198,6 +198,32 @@ uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
 That pilot uses 20 repetitions and makes 300 calls: sender action, sender shadow
 probe, and receiver action for each condition/repetition.
 
+
+### Cross-model screen on the Rakuten OpenAI-compatible endpoint
+
+Three matched 5-repetition configs are provided for the currently available
+remote models:
+
+```bash
+export OPENAI_API_KEY=...
+
+uv run hanabi-ck micro-pair configs/micro_pair_probe_deepseek_v4_flash.yaml
+uv run hanabi-ck micro-pair configs/micro_pair_probe_rakutenai_3.yaml
+uv run hanabi-ck micro-pair configs/micro_pair_probe_glm_5_3.yaml
+```
+
+All three use the same scenario, condition order seed, action-order seeds, and
+probe design. Each screen makes 75 API calls. Compare
+`sender_probe_mapping_accuracy`, `sender_probe_partner_knowledge_accuracy`,
+`sender_convention_hint_rate`, and `sender_probe_knowledge_to_action_gap`
+before scaling the strongest candidate to 20 repetitions.
+
+The configs set
+`base_url: https://api-opensource-ai.mde.rakuten-it.com/v1`,
+`vary_api_seed: false`, and omit LM Studio/Qwen-specific `extra_body`
+arguments. If the endpoint rejects strict `json_schema` response formatting,
+set `structured_output: false` and rerun; parsing still requires valid JSON.
+
 ## Common-knowledge ladder
 
 The initial conditions are:
