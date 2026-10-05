@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from .api_check import check_openai_compatible_api, format_api_check
 from .inspection import inspect_log
 from .micro_runner import run_micro_experiment
 from .pair_micro_runner import run_pair_micro_experiment
@@ -27,6 +28,12 @@ def main() -> None:
         help="Run a two-agent sender-to-receiver micro diagnostic",
     )
     micro_pair.add_argument("config")
+
+    api_check = sub.add_parser(
+        "api-check",
+        help="Check endpoint auth, basic chat, and structured-output support",
+    )
+    api_check.add_argument("config")
 
     inspect = sub.add_parser(
         "inspect",
@@ -109,6 +116,9 @@ def main() -> None:
                 indent=2,
             )
         )
+    elif args.command == "api-check":
+        report = check_openai_compatible_api(args.config)
+        print(format_api_check(report))
     elif args.command == "inspect":
         inspect_log(
             args.log,
