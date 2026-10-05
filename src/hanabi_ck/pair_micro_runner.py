@@ -317,6 +317,13 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         raise ValueError("repetitions must be positive")
 
     convention = str(cfg.get("convention", DEFAULT_CONVENTION))
+    condition_wording_variant = str(
+        cfg.get("condition_wording_variant", "canonical")
+    )
+    if condition_wording_variant not in {"canonical", "minimal_pair"}:
+        raise ValueError(
+            "condition_wording_variant must be 'canonical' or 'minimal_pair'"
+        )
     error_policy = str(cfg.get("agent_error_policy", "abort"))
     if error_policy not in ERROR_POLICIES:
         raise ValueError(
@@ -419,6 +426,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 num_players=scenario.num_players,
                 convention=convention,
                 informed_players=ck1_informed_players,
+                wording_variant=condition_wording_variant,
             )
             sender_instruction = (
                 sender_condition_instruction
@@ -470,6 +478,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "experiment": experiment,
                     "scenario": scenario.name,
                     "condition": condition_name,
+                    "condition_wording_variant": condition_wording_variant,
                     "repetition": repetition,
                     "valid": False,
                     "sender_only": sender_only,
@@ -572,6 +581,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "scenario": scenario.name,
                     "scenario_description": scenario.description,
                     "condition": condition_name,
+                    "condition_wording_variant": condition_wording_variant,
                     "repetition": repetition,
                     "condition_order": condition_order,
                     "condition_order_index": condition_order_index,
@@ -740,6 +750,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "scenario": scenario.name,
                 "scenario_description": scenario.description,
                 "condition": condition_name,
+                "condition_wording_variant": condition_wording_variant,
                 "repetition": repetition,
                 "condition_order": condition_order,
                 "condition_order_index": condition_order_index,
@@ -966,6 +977,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "scenario_description": scenario.description,
         "repetitions": repetitions,
         "conditions": conditions,
+        "condition_wording_variant": condition_wording_variant,
         "ck1_informed_players": sorted(ck1_informed_players),
         "sender_only": sender_only,
         "sender_shadow_probe": sender_probe,
