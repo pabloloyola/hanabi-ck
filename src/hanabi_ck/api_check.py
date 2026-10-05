@@ -21,18 +21,23 @@ def _choice_fields(data: dict[str, Any]) -> dict[str, Any]:
     choice = data["choices"][0]
     message = choice["message"]
     content = message.get("content")
-    reasoning = message.get("reasoning_content")
+    reasoning_content = message.get("reasoning_content")
+    reasoning = message.get("reasoning")
     selected = (
         content
         if isinstance(content, str) and content.strip()
+        else reasoning_content
+        if isinstance(reasoning_content, str) and reasoning_content.strip()
         else reasoning
         if isinstance(reasoning, str) and reasoning.strip()
         else ""
     )
     return {
         "finish_reason": choice.get("finish_reason"),
+        "native_finish_reason": choice.get("native_finish_reason"),
         "content": content,
-        "reasoning_content": reasoning,
+        "reasoning_content": reasoning_content,
+        "reasoning": reasoning,
         "selected_text": selected,
     }
 
@@ -130,6 +135,30 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
 
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout_s = float(spec.get("timeout_s", 60.0))
+    configured_max_tokens = int(spec.get("max_tokens", 256))
+    configured_temperature = spec.get("temperature", 0.0)
+    extra_body = dict(spec.get("extra_body") or {})
+
+    def apply_configured_controls(payload: dict[str, Any]) -> dict[str, Any]:
+        out = dict(payload)
+        out["max_tokens"] = configured_max_tokens
+        if configured_temperature is not None:
+            out["temperature"] = float(configured_temperature)
+        reserved = set(out)
+        collisions = reserved.intersection(extra_body)
+        if collisions:
+            raise ValueError(
+                "agent.extra_body cannot override core payload fields: "
+                + ", ".join(sorted(collisions))
+            )
+        out.update(extra_body)
+        return out
+
+    report["configured_controls"] = {
+        "temperature": configured_temperature,
+        "max_tokens": configured_max_tokens,
+        "extra_body": extra_body,
+    }
 
     with httpx.Client(timeout=timeout_s) as client:
         # Stage 1: endpoint/auth discovery. Some providers may not expose /models,
@@ -148,17 +177,17 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
             }
 
         # Stage 2: minimal chat completion, intentionally without response_format.
-        basic_payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": 'Return exactly the word OK.',
-                }
-            ],
-            "temperature": 0.0,
-            "max_tokens": 128,
-        }
+        basic_payload = apply_configured_controls(
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": 'Return exactly the word OK.',
+                    }
+                ],
+            }
+        )
         try:
             response = client.post(
                 f"{base_url}/chat/completions",
@@ -179,6 +208,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                     basic_ok, fields = _valid_basic_completion(data)
                     basic_entry.update(fields)
                     basic_entry["returned_model"] = data.get("model")
+                    basic_entry["provider"] = data.get("provider")
                     basic_entry["ok"] = basic_ok
                     if not basic_ok:
                         basic_entry["validation_warning"] = (
@@ -198,17 +228,16 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
             basic_ok = False
 
         # Stage 3: test the exact structured-output capability used by Hanabi.
-        schema_payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": 'Return JSON with field "ok" set to true.',
-                }
-            ],
-            "temperature": 0.0,
-            "max_tokens": 256,
-            "response_format": {
+        schema_payload = apply_configured_controls(
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": 'Return JSON with field "ok" set to true.',
+                    }
+                ],
+                "response_format": {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "hanabi_connectivity_check",
@@ -224,6 +253,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                 },
             },
         }
+        )
         try:
             response = client.post(
                 f"{base_url}/chat/completions",
@@ -244,6 +274,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                     schema_ok, fields = _valid_schema_completion(data)
                     schema_entry.update(fields)
                     schema_entry["returned_model"] = data.get("model")
+                    schema_entry["provider"] = data.get("provider")
                     schema_entry["ok"] = schema_ok
                     if not schema_ok:
                         schema_entry["validation_warning"] = (
