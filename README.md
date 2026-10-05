@@ -264,6 +264,40 @@ uv run hanabi-ck micro-pair \
 ```
 
 
+### Wording-control and third-model CK2 -> CK3 screens
+
+The sender-only reliance harness supports `condition_wording_variant:
+minimal_pair`. This keeps the convention text fixed while reducing the CK2 and
+CK3 meta-information to a closely matched contrast:
+
+- CK2: the sender has the convention, but its instructions do not establish
+  whether the other player has it.
+- CK3: the sender has the convention, and its instructions explicitly establish
+  that the other player has the same convention.
+
+Matched 20-pair wording controls are available for GPT-5.4 and DeepSeek V4
+Flash:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_ck2_ck3_minimal_pair.yaml
+
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_deepseek_v4_flash_ck2_ck3_minimal_pair.yaml
+```
+
+A third-model screen uses Claude Sonnet 5.5 through OpenRouter with the
+Anthropic provider pinned. Run the two-call smoke test first, then the 20-pair
+screen:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_sonnet_5_5_smoke.yaml
+
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_sonnet_5_5_ck2_ck3.yaml
+```
+
 ### Cross-model screen on the Rakuten OpenAI-compatible endpoint
 
 Three matched 5-repetition configs are provided for the currently available
