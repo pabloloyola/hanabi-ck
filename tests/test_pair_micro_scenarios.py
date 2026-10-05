@@ -53,3 +53,42 @@ def test_pair_micro_exposes_public_hint_touch_sets():
     )
     assert scenario.touched_indices_for_hint(Action.hint(1, "rank", 2)) == (0,)
     assert scenario.touched_indices_for_hint(Action.hint(1, "rank", 3)) == (3,)
+
+
+
+def test_reliance_scenario_robust_hint_makes_only_newest_safe():
+    scenario = get_pair_micro_scenario("sender_reliance_ck2_ck3")
+    assert scenario.robust_hint == Action.hint(1, "rank", 1)
+
+    observation = scenario.receiver_observation_after_hint(
+        scenario.robust_hint
+    )
+
+    assert observation.provably_playable_indices == [4]
+    assert observation.newest_card_index[1] == 4
+
+
+def test_reliance_scenario_convention_hint_creates_three_safe_choices():
+    scenario = get_pair_micro_scenario("sender_reliance_ck2_ck3")
+    assert scenario.convention_trigger_hint == Action.hint(1, "rank", 2)
+
+    observation = scenario.receiver_observation_after_hint(
+        scenario.convention_trigger_hint
+    )
+
+    assert observation.provably_playable_indices == [1, 2, 4]
+    assert scenario.receiver_target_action == Action.play(4)
+
+
+def test_reliance_scenario_expected_sender_switch_is_ck2_to_ck3():
+    scenario = get_pair_micro_scenario("sender_reliance_ck2_ck3")
+
+    for condition in ("ck0", "ck1_private", "ck2_shared"):
+        assert scenario.expected_sender_hint_for_condition(condition) == (
+            scenario.robust_hint
+        )
+
+    for condition in ("ck3_mutual", "ck_inf_common"):
+        assert scenario.expected_sender_hint_for_condition(condition) == (
+            scenario.convention_trigger_hint
+        )
