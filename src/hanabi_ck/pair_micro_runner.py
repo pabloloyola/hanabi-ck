@@ -71,6 +71,8 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "n_valid_samples": 0,
             "n_error_samples": len(samples),
             "sender_convention_hint_rate": None,
+            "sender_robust_hint_rate": None,
+            "sender_epistemic_choice_accuracy": None,
             "sender_hint_counts": {},
             "receiver_newest_rate": None,
             "safe_coordination_success_rate": None,
@@ -89,6 +91,18 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     sender_trigger_count = sum(
         bool(sample["sender_used_convention_hint"])
         for sample in valid
+    )
+    sender_robust_count = sum(
+        bool(sample.get("sender_used_robust_hint"))
+        for sample in valid
+    )
+    epistemic_choice_samples = [
+        sample for sample in valid
+        if sample.get("sender_epistemic_choice_correct") is not None
+    ]
+    epistemic_choice_correct_count = sum(
+        bool(sample.get("sender_epistemic_choice_correct"))
+        for sample in epistemic_choice_samples
     )
     receiver_newest_count = sum(
         bool(sample["receiver_selected_newest"])
@@ -158,6 +172,18 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "sender_convention_hint_rate_ci95_wilson": _wilson_interval(
             sender_trigger_count,
             len(valid),
+        ),
+        "sender_robust_hint_count": sender_robust_count,
+        "sender_robust_hint_rate": sender_robust_count / len(valid),
+        "sender_epistemic_choice_correct_count": (
+            epistemic_choice_correct_count
+            if epistemic_choice_samples
+            else None
+        ),
+        "sender_epistemic_choice_accuracy": (
+            epistemic_choice_correct_count / len(epistemic_choice_samples)
+            if epistemic_choice_samples
+            else None
         ),
         "sender_hint_counts": dict(sorted(sender_hint_counts.items())),
         "receiver_newest_count": receiver_newest_count,
@@ -331,16 +357,24 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             seed=sender_action_order_seed + repetition,
             enabled=shuffle_actions,
         )
-        sender_hint_effects = [
-            {
-                "action_index": index,
-                "action": action.to_dict(),
-                "touched_indices": list(
-                    scenario.touched_indices_for_hint(action)
-                ),
-            }
-            for index, action in enumerate(sender_actions)
-        ]
+        sender_hint_effects = []
+        for index, action in enumerate(sender_actions):
+            receiver_after = scenario.receiver_observation_after_hint(action)
+            sender_hint_effects.append(
+                {
+                    "action_index": index,
+                    "action": action.to_dict(),
+                    "touched_indices": list(
+                        scenario.touched_indices_for_hint(action)
+                    ),
+                    "receiver_provably_playable_indices_after_hint": list(
+                        receiver_after.provably_playable_indices
+                    ),
+                    "receiver_provably_obsolete_indices_after_hint": list(
+                        receiver_after.provably_obsolete_indices
+                    ),
+                }
+            )
         sender_convention_hint_index = sender_actions.index(
             scenario.convention_trigger_hint
         )
@@ -369,9 +403,11 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 + "\n\nDIAGNOSTIC COMMUNICATION GOAL:\n"
                 + scenario.sender_goal
                 + "\n\nPUBLIC MECHANICAL HINT EFFECTS:\n"
-                + "The following touched_indices are deterministic consequences "
-                + "of the visible receiver hand, not hidden information. Use them "
-                + "to reason about which legal hint communicates the goal:\n"
+                + "The following touched_indices and post-hint provable-safety "
+                + "annotations are deterministic consequences of the visible "
+                + "receiver hand, public knowledge, and public stacks; they are "
+                + "not hidden information. Use them to reason about which legal "
+                + "hint best achieves the goal:\n"
                 + json.dumps(sender_hint_effects, ensure_ascii=False)
             )
             sender_request_hash = _payload_hash(
@@ -391,6 +427,19 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 error_policy=error_policy,
                 observation=scenario.sender_observation,
                 legal_actions=sender_actions,
+            )
+
+            expected_sender_hint = (
+                scenario.expected_sender_hint_for_condition(condition_name)
+            )
+            sender_used_robust_hint = (
+                scenario.robust_hint is not None
+                and sender_action == scenario.robust_hint
+            )
+            sender_epistemic_choice_correct = (
+                sender_action == expected_sender_hint
+                if expected_sender_hint is not None
+                else None
             )
 
             if sender_action is None:
@@ -630,6 +679,15 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "sender_used_convention_hint": (
                     sender_action == scenario.convention_trigger_hint
                 ),
+                "sender_used_robust_hint": sender_used_robust_hint,
+                "sender_expected_hint": (
+                    expected_sender_hint.to_dict()
+                    if expected_sender_hint is not None
+                    else None
+                ),
+                "sender_epistemic_choice_correct": (
+                    sender_epistemic_choice_correct
+                ),
                 "sender_agent": {
                     "model": sender_spec.get("model"),
                     "response_error": sender_decision.parse_error is not None,
@@ -693,6 +751,22 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ]
         aggregate_by_condition[condition_name] = aggregate_pair_samples(subset)
 
+    sender_convention_pairwise = _all_pairwise_comparisons(
+        all_samples,
+        conditions,
+        field="sender_used_convention_hint",
+        valid_field="valid",
+    )
+    sender_epistemic_choice_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_epistemic_choice_correct",
+            valid_field="valid",
+        )
+        if scenario.epistemic_reliance_test
+        else {}
+    )
     receiver_pairwise = _all_pairwise_comparisons(
         all_samples,
         conditions,
@@ -754,6 +828,14 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "sender_shadow_probe": sender_probe,
         "sender_probe_seed_offset": sender_probe_seed_offset,
         "aggregate_by_condition": aggregate_by_condition,
+        "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
+        "paired_sender_convention_hint_vs_baseline": _comparisons_vs_baseline(
+            sender_convention_pairwise,
+            baseline,
+        ),
+        "paired_sender_epistemic_choice_comparisons": (
+            sender_epistemic_choice_pairwise
+        ),
         "paired_receiver_comparisons": receiver_pairwise,
         "paired_receiver_vs_baseline": _comparisons_vs_baseline(
             receiver_pairwise,
