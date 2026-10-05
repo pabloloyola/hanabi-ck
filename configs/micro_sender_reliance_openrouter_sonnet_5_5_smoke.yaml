@@ -32,7 +32,7 @@ agent:
   structured_output: true
   extra_body:
     provider:
-      order: ["anthropic"]
+      order: ["amazon-bedrock"]
       allow_fallbacks: false
     reasoning:
       effort: medium
