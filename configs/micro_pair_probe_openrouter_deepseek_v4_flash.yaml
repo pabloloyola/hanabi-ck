@@ -38,6 +38,10 @@ agent:
   timeout_s: 180
   max_tokens: 1024
   structured_output: true
+  extra_body:
+    provider:
+      order: ["venice"]
+      allow_fallbacks: false
 
 agent_error_policy: abort
 log_raw_model_responses: true
