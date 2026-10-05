@@ -327,7 +327,12 @@ class OpenAICompatibleAgent:
             base_url
             or os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1")
         ).rstrip("/")
-        resolved_key = api_key or os.getenv("OPENAI_API_KEY")
+        openrouter_key = (
+            os.getenv("OPENROUTER_API_KEY")
+            if "openrouter.ai" in self.base_url
+            else None
+        )
+        resolved_key = api_key or openrouter_key or os.getenv("OPENAI_API_KEY")
         is_local = (
             self.base_url.startswith("http://localhost")
             or self.base_url.startswith("https://localhost")
@@ -340,7 +345,7 @@ class OpenAICompatibleAgent:
             else:
                 raise ValueError(
                     "No API key configured for remote OpenAI-compatible endpoint. "
-                    "Set OPENAI_API_KEY or agent.api_key."
+                    "Set OPENROUTER_API_KEY / OPENAI_API_KEY or agent.api_key."
                 )
         self.api_key = resolved_key
         self.temperature = temperature
