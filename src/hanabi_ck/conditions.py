@@ -22,11 +22,59 @@ class Condition:
         num_players: int,
         convention: str = DEFAULT_CONVENTION,
         informed_players: set[int] | None = None,
+        wording_variant: str = "canonical",
     ) -> str:
         if informed_players is not None and any(
             p < 0 or p >= num_players for p in informed_players
         ):
             raise ValueError("informed_players contains an invalid player id")
+
+        if wording_variant not in {"canonical", "minimal_pair"}:
+            raise ValueError(
+                "wording_variant must be one of ['canonical', 'minimal_pair']"
+            )
+
+        if wording_variant == "minimal_pair":
+            if self.name == "ck0":
+                return (
+                    "No additional team convention is provided. Coordinate only from "
+                    "the Hanabi rules and the observed game history."
+                )
+
+            if self.name == "ck1_private":
+                holders = {0} if informed_players is None else informed_players
+                if player_id in holders:
+                    return (
+                        f"Experimental convention:\n{convention}\n\n"
+                        "You have this convention. Your instructions do not establish "
+                        "whether any other player has it."
+                    )
+                return (
+                    "No additional team convention is provided to you. Coordinate only "
+                    "from the Hanabi rules and the observed game history."
+                )
+
+            if self.name == "ck2_shared":
+                return (
+                    f"Experimental convention:\n{convention}\n\n"
+                    "You have this convention. Your instructions do not establish "
+                    "whether any other player has it."
+                )
+
+            if self.name == "ck3_mutual":
+                return (
+                    f"Experimental convention:\n{convention}\n\n"
+                    "You have this convention. Your instructions explicitly establish "
+                    "that every other player has the same convention."
+                )
+
+            if self.name == "ck_inf_common":
+                return (
+                    f"PUBLIC TEAM CONVENTION:\n{convention}\n\n"
+                    "You have this convention. It was publicly communicated to every "
+                    "player, with everyone informed that everyone received it; treat "
+                    "that fact and the convention itself as common knowledge."
+                )
 
         if self.name == "ck0":
             return (
