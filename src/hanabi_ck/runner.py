@@ -35,7 +35,11 @@ def _build_agent(spec: dict[str, Any], *, seed: int):
             model=spec["model"],
             base_url=spec.get("base_url"),
             api_key=spec.get("api_key"),
-            temperature=float(spec.get("temperature", 0.0)),
+            temperature=(
+                None
+                if spec.get("temperature", 0.0) is None
+                else float(spec.get("temperature", 0.0))
+            ),
             timeout_s=float(spec.get("timeout_s", 60.0)),
             max_tokens=(
                 int(spec["max_tokens"])
