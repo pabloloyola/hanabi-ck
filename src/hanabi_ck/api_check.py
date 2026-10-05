@@ -137,6 +137,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
     timeout_s = float(spec.get("timeout_s", 60.0))
     configured_max_tokens = int(spec.get("max_tokens", 256))
     configured_temperature = spec.get("temperature", 0.0)
+    configured_structured_output = bool(spec.get("structured_output", False))
     extra_body = dict(spec.get("extra_body") or {})
 
     def apply_configured_controls(payload: dict[str, Any]) -> dict[str, Any]:
@@ -157,6 +158,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
     report["configured_controls"] = {
         "temperature": configured_temperature,
         "max_tokens": configured_max_tokens,
+        "structured_output": configured_structured_output,
         "extra_body": extra_body,
     }
 
@@ -227,71 +229,84 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
             }
             basic_ok = False
 
-        # Stage 3: test the exact structured-output capability used by Hanabi.
-        schema_payload = apply_configured_controls(
-            {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": 'Return JSON with field "ok" set to true.',
-                    }
-                ],
-                "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "hanabi_connectivity_check",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "ok": {"type": "boolean", "const": True}
+        # Stage 3: test strict structured output only when the experiment
+        # actually requests it. Some OpenRouter routes support the model but
+        # not json_schema response_format.
+        if configured_structured_output:
+            schema_payload = apply_configured_controls(
+                {
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": 'Return JSON with field "ok" set to true.',
+                        }
+                    ],
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "hanabi_connectivity_check",
+                            "strict": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "ok": {"type": "boolean", "const": True}
+                                },
+                                "required": ["ok"],
+                                "additionalProperties": False,
+                            },
                         },
-                        "required": ["ok"],
-                        "additionalProperties": False,
                     },
-                },
-            },
-        }
-        )
-        try:
-            response = client.post(
-                f"{base_url}/chat/completions",
-                headers=headers,
-                json=schema_payload,
+                }
             )
-            http_ok = response.is_success
-            schema_ok = False
-            schema_entry: dict[str, Any] = {
-                "status_code": response.status_code,
-                "http_ok": http_ok,
-                "ok": False,
-                "body": _short_body(response),
-            }
-            if http_ok:
-                try:
-                    data = response.json()
-                    schema_ok, fields = _valid_schema_completion(data)
-                    schema_entry.update(fields)
-                    schema_entry["returned_model"] = data.get("model")
-                    schema_entry["provider"] = data.get("provider")
-                    schema_entry["ok"] = schema_ok
-                    if not schema_ok:
-                        schema_entry["validation_warning"] = (
-                            "HTTP succeeded but no complete valid structured "
-                            "answer was produced."
+            try:
+                response = client.post(
+                    f"{base_url}/chat/completions",
+                    headers=headers,
+                    json=schema_payload,
+                )
+                http_ok = response.is_success
+                schema_ok = False
+                schema_entry: dict[str, Any] = {
+                    "status_code": response.status_code,
+                    "http_ok": http_ok,
+                    "ok": False,
+                    "body": _short_body(response),
+                }
+                if http_ok:
+                    try:
+                        data = response.json()
+                        schema_ok, fields = _valid_schema_completion(data)
+                        schema_entry.update(fields)
+                        schema_entry["returned_model"] = data.get("model")
+                        schema_entry["provider"] = data.get("provider")
+                        schema_entry["ok"] = schema_ok
+                        if not schema_ok:
+                            schema_entry["validation_warning"] = (
+                                "HTTP succeeded but no complete valid structured "
+                                "answer was produced."
+                            )
+                    except Exception as exc:
+                        schema_entry["parse_warning"] = (
+                            f"{type(exc).__name__}: {exc}"
                         )
-                except Exception as exc:
-                    schema_entry["parse_warning"] = (
-                        f"{type(exc).__name__}: {exc}"
-                    )
-            report["checks"]["structured_output"] = schema_entry
-        except Exception as exc:
+                report["checks"]["structured_output"] = schema_entry
+            except Exception as exc:
+                report["checks"]["structured_output"] = {
+                    "ok": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+                schema_ok = False
+        else:
+            schema_ok = True
             report["checks"]["structured_output"] = {
-                "ok": False,
-                "error": f"{type(exc).__name__}: {exc}",
+                "ok": True,
+                "skipped": True,
+                "reason": (
+                    "structured_output is disabled in this config; Hanabi will "
+                    "request JSON in the prompt and validate it client-side."
+                ),
             }
-            schema_ok = False
 
     report["ok"] = bool(basic_ok and schema_ok)
     if basic_ok and not schema_ok:
@@ -308,8 +323,13 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
         )
     else:
         report["recommendation"] = (
-            "Basic chat and strict structured output both work. "
-            "The Hanabi experiment can use structured_output: true."
+            "The configured request mode is usable. "
+            + (
+                "Basic chat and strict structured output both work."
+                if configured_structured_output
+                else "Basic chat works; structured output is disabled and "
+                "responses will be JSON-validated client-side."
+            )
         )
     return report
 
