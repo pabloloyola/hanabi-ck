@@ -104,25 +104,29 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         bool(sample.get("sender_epistemic_choice_correct"))
         for sample in epistemic_choice_samples
     )
+    receiver_valid = [
+        sample for sample in valid
+        if sample.get("receiver_action") is not None
+    ]
     receiver_newest_count = sum(
-        bool(sample["receiver_selected_newest"])
-        for sample in valid
+        bool(sample.get("receiver_selected_newest"))
+        for sample in receiver_valid
     )
     trigger_samples = [
-        sample for sample in valid
+        sample for sample in receiver_valid
         if sample["sender_used_convention_hint"]
     ]
     safe_coordination_count = sum(
-        bool(sample["safe_coordination_success"])
-        for sample in valid
+        bool(sample.get("safe_coordination_success"))
+        for sample in receiver_valid
     )
     convention_chain_count = sum(
-        bool(sample["convention_chain_success"])
-        for sample in valid
+        bool(sample.get("convention_chain_success"))
+        for sample in receiver_valid
     )
     receiver_action_types = Counter(
         sample["receiver_action"]["type"]
-        for sample in valid
+        for sample in receiver_valid
     )
     sender_hint_counts = Counter(
         sample["sender_hint_label"]
@@ -186,27 +190,44 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             else None
         ),
         "sender_hint_counts": dict(sorted(sender_hint_counts.items())),
-        "receiver_newest_count": receiver_newest_count,
-        "receiver_newest_rate": receiver_newest_count / len(valid),
-        "receiver_newest_rate_ci95_wilson": _wilson_interval(
-            receiver_newest_count,
-            len(valid),
+        "receiver_newest_count": (
+            receiver_newest_count if receiver_valid else None
         ),
-        "safe_coordination_success_count": safe_coordination_count,
+        "receiver_newest_rate": (
+            receiver_newest_count / len(receiver_valid)
+            if receiver_valid
+            else None
+        ),
+        "receiver_newest_rate_ci95_wilson": (
+            _wilson_interval(receiver_newest_count, len(receiver_valid))
+            if receiver_valid
+            else None
+        ),
+        "safe_coordination_success_count": (
+            safe_coordination_count if receiver_valid else None
+        ),
         "safe_coordination_success_rate": (
-            safe_coordination_count / len(valid)
+            safe_coordination_count / len(receiver_valid)
+            if receiver_valid
+            else None
         ),
-        "safe_coordination_success_rate_ci95_wilson": _wilson_interval(
-            safe_coordination_count,
-            len(valid),
+        "safe_coordination_success_rate_ci95_wilson": (
+            _wilson_interval(safe_coordination_count, len(receiver_valid))
+            if receiver_valid
+            else None
         ),
-        "convention_chain_success_count": convention_chain_count,
+        "convention_chain_success_count": (
+            convention_chain_count if receiver_valid else None
+        ),
         "convention_chain_success_rate": (
-            convention_chain_count / len(valid)
+            convention_chain_count / len(receiver_valid)
+            if receiver_valid
+            else None
         ),
-        "convention_chain_success_rate_ci95_wilson": _wilson_interval(
-            convention_chain_count,
-            len(valid),
+        "convention_chain_success_rate_ci95_wilson": (
+            _wilson_interval(convention_chain_count, len(receiver_valid))
+            if receiver_valid
+            else None
         ),
         "receiver_newest_given_convention_hint_rate": (
             mean(
@@ -222,12 +243,12 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "receiver_epistemically_safe_play_rate": (
             mean(
                 float(sample["receiver_epistemically_safe_play"])
-                for sample in valid
+                for sample in receiver_valid
                 if sample["receiver_action"]["type"] == "play"
             )
             if any(
                 sample["receiver_action"]["type"] == "play"
-                for sample in valid
+                for sample in receiver_valid
             )
             else None
         ),
@@ -302,15 +323,16 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             f"agent_error_policy must be one of {sorted(ERROR_POLICIES)}"
         )
 
+    sender_only = bool(cfg.get("sender_only", False))
     sender_spec_base = dict(cfg.get("sender_agent") or cfg["agent"])
     receiver_spec_base = dict(cfg.get("receiver_agent") or cfg["agent"])
+    if sender_spec_base.get("type") != "openai_compatible":
+        raise ValueError("micro-pair requires an openai_compatible sender")
     if (
-        sender_spec_base.get("type") != "openai_compatible"
-        or receiver_spec_base.get("type") != "openai_compatible"
+        not sender_only
+        and receiver_spec_base.get("type") != "openai_compatible"
     ):
-        raise ValueError(
-            "micro-pair currently requires openai_compatible sender and receiver"
-        )
+        raise ValueError("micro-pair requires an openai_compatible receiver")
 
     sample_seed_start = int(cfg.get("sample_seed_start", 0))
     receiver_seed_offset = int(cfg.get("receiver_seed_offset", 1_000_000))
@@ -450,6 +472,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "condition": condition_name,
                     "repetition": repetition,
                     "valid": False,
+                    "sender_only": sender_only,
                     "stage": "sender",
                     "sender_error": sender_decision.parse_error,
                     "sender_request_payload_hash": sender_request_hash,
@@ -541,6 +564,109 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 and sender_probe_receiver_knowledge
                 == expected_receiver_knowledge
             )
+
+            if sender_only:
+                record = {
+                    "event_kind": "micro_pair_sample",
+                    "experiment": experiment,
+                    "scenario": scenario.name,
+                    "scenario_description": scenario.description,
+                    "condition": condition_name,
+                    "repetition": repetition,
+                    "condition_order": condition_order,
+                    "condition_order_index": condition_order_index,
+                    "sender_only": True,
+                    "sender_seed": sender_seed,
+                    "sender_private_instruction_hash": _hash_text(
+                        sender_condition_instruction
+                    ),
+                    "sender_request_payload_hash": sender_request_hash,
+                    "sender_probe_enabled": sender_probe,
+                    "sender_probe_seed": sender_probe_seed,
+                    "sender_probe_request_payload_hash": (
+                        sender_probe_request_hash
+                    ),
+                    "sender_probe_valid": sender_probe_valid,
+                    "sender_probe_error": sender_probe_error,
+                    "sender_probe_expected_hint_index": expected_probe_hint_index,
+                    "sender_probe_convention_hint_index": (
+                        sender_probe_convention_hint_index
+                    ),
+                    "sender_probe_identified_convention_hint": (
+                        sender_probe_identified_convention_hint
+                    ),
+                    "sender_probe_mapping_correct": sender_probe_mapping_correct,
+                    "sender_probe_expected_receiver_convention_knowledge": (
+                        expected_receiver_knowledge
+                    ),
+                    "sender_probe_receiver_convention_knowledge": (
+                        sender_probe_receiver_knowledge
+                    ),
+                    "sender_probe_partner_knowledge_correct": (
+                        sender_probe_partner_knowledge_correct
+                    ),
+                    "sender_probe_response_channel": (
+                        sender_probe_response_channel
+                    ),
+                    "sender_probe_raw_response": (
+                        sender_probe_raw_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "sender_probe_api_response": (
+                        sender_probe_api_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "sender_goal": scenario.sender_goal,
+                    "sender_observation": scenario.sender_observation.to_dict(),
+                    "sender_legal_hints": [
+                        action.to_dict() for action in sender_actions
+                    ],
+                    "sender_hint_effects": sender_hint_effects,
+                    "sender_model_action_index": sender_decision.action_index,
+                    "sender_action": sender_action.to_dict(),
+                    "sender_hint_label": _hint_label(sender_action),
+                    "sender_touched_indices": list(
+                        scenario.touched_indices_for_hint(sender_action)
+                    ),
+                    "sender_used_convention_hint": (
+                        sender_action == scenario.convention_trigger_hint
+                    ),
+                    "sender_used_robust_hint": sender_used_robust_hint,
+                    "sender_expected_hint": (
+                        expected_sender_hint.to_dict()
+                        if expected_sender_hint is not None
+                        else None
+                    ),
+                    "sender_epistemic_choice_correct": (
+                        sender_epistemic_choice_correct
+                    ),
+                    "sender_agent": {
+                        "model": sender_spec.get("model"),
+                        "response_error": (
+                            sender_decision.parse_error is not None
+                        ),
+                        "response_channel": sender_decision.response_channel,
+                        "error": sender_decision.parse_error,
+                        "fallback_used": sender_fallback,
+                        "raw_response": (
+                            sender_decision.raw_response
+                            if cfg.get("log_raw_model_responses", True)
+                            else None
+                        ),
+                        "api_response": (
+                            sender_decision.api_response
+                            if cfg.get("log_raw_model_responses", True)
+                            else None
+                        ),
+                    },
+                    "receiver_action": None,
+                    "valid": True,
+                }
+                logger.write(record)
+                all_samples.append(record)
+                continue
 
             receiver_observation = (
                 scenario.receiver_observation_after_hint(sender_action)
@@ -767,23 +893,35 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         if scenario.epistemic_reliance_test
         else {}
     )
-    receiver_pairwise = _all_pairwise_comparisons(
-        all_samples,
-        conditions,
-        field="receiver_selected_newest",
-        valid_field="valid",
+    receiver_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="receiver_selected_newest",
+            valid_field="valid",
+        )
     )
-    safe_coordination_pairwise = _all_pairwise_comparisons(
-        all_samples,
-        conditions,
-        field="safe_coordination_success",
-        valid_field="valid",
+    safe_coordination_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="safe_coordination_success",
+            valid_field="valid",
+        )
     )
-    convention_chain_pairwise = _all_pairwise_comparisons(
-        all_samples,
-        conditions,
-        field="convention_chain_success",
-        valid_field="valid",
+    convention_chain_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="convention_chain_success",
+            valid_field="valid",
+        )
     )
     sender_probe_identification_pairwise = (
         _all_pairwise_comparisons(
@@ -811,11 +949,15 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         field="sender_request_payload_hash",
         valid_field="valid",
     )
-    receiver_request_hash_pairwise = _all_pairwise_hash_comparisons(
-        all_samples,
-        conditions,
-        field="receiver_request_payload_hash",
-        valid_field="valid",
+    receiver_request_hash_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="receiver_request_payload_hash",
+            valid_field="valid",
+        )
     )
     baseline = "ck0" if "ck0" in conditions else conditions[0]
     summary = {
@@ -825,6 +967,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "repetitions": repetitions,
         "conditions": conditions,
         "ck1_informed_players": sorted(ck1_informed_players),
+        "sender_only": sender_only,
         "sender_shadow_probe": sender_probe,
         "sender_probe_seed_offset": sender_probe_seed_offset,
         "aggregate_by_condition": aggregate_by_condition,
@@ -837,21 +980,24 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             sender_epistemic_choice_pairwise
         ),
         "paired_receiver_comparisons": receiver_pairwise,
-        "paired_receiver_vs_baseline": _comparisons_vs_baseline(
-            receiver_pairwise,
-            baseline,
+        "paired_receiver_vs_baseline": (
+            _comparisons_vs_baseline(receiver_pairwise, baseline)
+            if receiver_pairwise
+            else {}
         ),
         "paired_safe_coordination_comparisons": (
             safe_coordination_pairwise
         ),
-        "paired_safe_coordination_vs_baseline": _comparisons_vs_baseline(
-            safe_coordination_pairwise,
-            baseline,
+        "paired_safe_coordination_vs_baseline": (
+            _comparisons_vs_baseline(safe_coordination_pairwise, baseline)
+            if safe_coordination_pairwise
+            else {}
         ),
         "paired_convention_chain_comparisons": convention_chain_pairwise,
-        "paired_convention_chain_vs_baseline": _comparisons_vs_baseline(
-            convention_chain_pairwise,
-            baseline,
+        "paired_convention_chain_vs_baseline": (
+            _comparisons_vs_baseline(convention_chain_pairwise, baseline)
+            if convention_chain_pairwise
+            else {}
         ),
         "paired_sender_probe_identification_comparisons": (
             sender_probe_identification_pairwise
