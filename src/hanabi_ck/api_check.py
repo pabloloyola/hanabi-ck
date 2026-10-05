@@ -17,6 +17,58 @@ def _short_body(response: httpx.Response, limit: int = 1200) -> str:
     return text
 
 
+def _choice_fields(data: dict[str, Any]) -> dict[str, Any]:
+    choice = data["choices"][0]
+    message = choice["message"]
+    content = message.get("content")
+    reasoning = message.get("reasoning_content")
+    selected = (
+        content
+        if isinstance(content, str) and content.strip()
+        else reasoning
+        if isinstance(reasoning, str) and reasoning.strip()
+        else ""
+    )
+    return {
+        "finish_reason": choice.get("finish_reason"),
+        "content": content,
+        "reasoning_content": reasoning,
+        "selected_text": selected,
+    }
+
+
+def _valid_basic_completion(data: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    fields = _choice_fields(data)
+    selected = str(fields["selected_text"]).strip()
+    ok = (
+        fields["finish_reason"] != "length"
+        and selected == "OK"
+    )
+    return ok, fields
+
+
+def _valid_schema_completion(data: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    fields = _choice_fields(data)
+    parsed: dict[str, Any] | None = None
+    parse_error: str | None = None
+    try:
+        candidate = json.loads(str(fields["selected_text"]).strip())
+        if isinstance(candidate, dict):
+            parsed = candidate
+        else:
+            parse_error = "response JSON is not an object"
+    except Exception as exc:
+        parse_error = f"{type(exc).__name__}: {exc}"
+
+    ok = (
+        fields["finish_reason"] != "length"
+        and parsed == {"ok": True}
+    )
+    fields["parsed_json"] = parsed
+    fields["validation_error"] = parse_error
+    return ok, fields
+
+
 def _agent_spec_from_config(cfg: dict[str, Any]) -> dict[str, Any]:
     spec = cfg.get("agent")
     if isinstance(spec, dict):
@@ -98,7 +150,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                 }
             ],
             "temperature": 0.0,
-            "max_tokens": 16,
+            "max_tokens": 128,
         }
         try:
             response = client.post(
@@ -106,21 +158,26 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                 headers=headers,
                 json=basic_payload,
             )
-            basic_ok = response.is_success
+            http_ok = response.is_success
+            basic_ok = False
             basic_entry: dict[str, Any] = {
                 "status_code": response.status_code,
-                "ok": basic_ok,
+                "http_ok": http_ok,
+                "ok": False,
                 "body": _short_body(response),
             }
-            if basic_ok:
+            if http_ok:
                 try:
                     data = response.json()
-                    message = data["choices"][0]["message"]
-                    basic_entry["content"] = message.get("content")
-                    basic_entry["reasoning_content"] = message.get(
-                        "reasoning_content"
-                    )
+                    basic_ok, fields = _valid_basic_completion(data)
+                    basic_entry.update(fields)
                     basic_entry["returned_model"] = data.get("model")
+                    basic_entry["ok"] = basic_ok
+                    if not basic_ok:
+                        basic_entry["validation_warning"] = (
+                            "HTTP succeeded but the model did not produce the "
+                            "requested final answer before the token limit."
+                        )
                 except Exception as exc:
                     basic_entry["parse_warning"] = (
                         f"{type(exc).__name__}: {exc}"
@@ -143,7 +200,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                 }
             ],
             "temperature": 0.0,
-            "max_tokens": 32,
+            "max_tokens": 256,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -166,20 +223,26 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
                 headers=headers,
                 json=schema_payload,
             )
-            schema_ok = response.is_success
+            http_ok = response.is_success
+            schema_ok = False
             schema_entry: dict[str, Any] = {
                 "status_code": response.status_code,
-                "ok": schema_ok,
+                "http_ok": http_ok,
+                "ok": False,
                 "body": _short_body(response),
             }
-            if schema_ok:
+            if http_ok:
                 try:
                     data = response.json()
-                    message = data["choices"][0]["message"]
-                    schema_entry["content"] = message.get("content")
-                    schema_entry["reasoning_content"] = message.get(
-                        "reasoning_content"
-                    )
+                    schema_ok, fields = _valid_schema_completion(data)
+                    schema_entry.update(fields)
+                    schema_entry["returned_model"] = data.get("model")
+                    schema_entry["ok"] = schema_ok
+                    if not schema_ok:
+                        schema_entry["validation_warning"] = (
+                            "HTTP succeeded but no complete valid structured "
+                            "answer was produced."
+                        )
                 except Exception as exc:
                     schema_entry["parse_warning"] = (
                         f"{type(exc).__name__}: {exc}"
@@ -195,13 +258,15 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
     report["ok"] = bool(basic_ok and schema_ok)
     if basic_ok and not schema_ok:
         report["recommendation"] = (
-            "Connectivity and model access work, but strict json_schema failed. "
-            "Set structured_output: false for this provider/model."
+            "Basic chat produced a usable answer, but the structured-output "
+            "check did not. Inspect finish_reason/content first; if the model "
+            "completed normally but rejected the schema, disable structured_output."
         )
     elif not basic_ok:
         report["recommendation"] = (
-            "Basic chat failed. Check API key, model identifier, endpoint access, "
-            "and the returned HTTP status/body."
+            "Basic chat did not yield a usable final answer. Check the HTTP "
+            "status, finish_reason, and whether reasoning consumed the token "
+            "budget before final content was emitted."
         )
     else:
         report["recommendation"] = (
