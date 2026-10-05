@@ -275,14 +275,43 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return obj
 
 
+def _raise_if_truncated(data: dict[str, Any]) -> None:
+    try:
+        choice = data["choices"][0]
+    except Exception:
+        return
+
+    finish_reason = choice.get("finish_reason")
+    native_finish_reason = choice.get("native_finish_reason")
+    if finish_reason == "length" or native_finish_reason == "length":
+        message = choice.get("message") or {}
+        content = message.get("content")
+        reasoning = (
+            message.get("reasoning_content")
+            or message.get("reasoning")
+        )
+        raise ValueError(
+            "Model completion hit max_tokens before producing a complete final "
+            "answer "
+            f"(finish_reason={finish_reason!r}, "
+            f"native_finish_reason={native_finish_reason!r}, "
+            f"content_present={bool(isinstance(content, str) and content.strip())}, "
+            f"reasoning_present={bool(isinstance(reasoning, str) and reasoning.strip())})"
+        )
+
+
 def _select_response_text(message: dict[str, Any]) -> tuple[str, str]:
     content = message.get("content")
     if isinstance(content, str) and content.strip():
         return content, "content"
 
-    reasoning = message.get("reasoning_content")
+    reasoning_content = message.get("reasoning_content")
+    if isinstance(reasoning_content, str) and reasoning_content.strip():
+        return reasoning_content, "reasoning_content"
+
+    reasoning = message.get("reasoning")
     if isinstance(reasoning, str) and reasoning.strip():
-        return reasoning, "reasoning_content"
+        return reasoning, "reasoning"
 
     return "", "none"
 
@@ -566,6 +595,7 @@ Return ONLY JSON of the form {"intended_card_index": N}."""
                 response.raise_for_status()
                 data = response.json()
 
+            _raise_if_truncated(data)
             message = data["choices"][0]["message"]
             raw, response_channel = _select_response_text(message)
             parsed = _extract_json_object(raw)
@@ -741,6 +771,7 @@ Return ONLY JSON with exactly:
                 response.raise_for_status()
                 data = response.json()
 
+            _raise_if_truncated(data)
             message = data["choices"][0]["message"]
             raw, response_channel = _select_response_text(message)
             parsed = _extract_json_object(raw)
@@ -808,16 +839,15 @@ Return ONLY JSON with exactly:
         legal_actions: list[Action],
         private_instruction: str,
     ) -> AgentDecision:
-        payload = self._request_payload(
-            observation,
-            legal_actions,
-            private_instruction,
-        )
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-
         raw = ""
         data: dict[str, Any] | None = None
         try:
+            payload = self._request_payload(
+                observation,
+                legal_actions,
+                private_instruction,
+            )
+            headers = {"Authorization": f"Bearer {self.api_key}"}
             with httpx.Client(timeout=self.timeout_s) as client:
                 response = client.post(
                     f"{self.base_url}/chat/completions",
@@ -827,6 +857,7 @@ Return ONLY JSON with exactly:
                 response.raise_for_status()
                 data = response.json()
 
+            _raise_if_truncated(data)
             message = data["choices"][0]["message"]
             raw, response_channel = _select_response_text(message)
 
