@@ -45,6 +45,18 @@ uv run hanabi-ck run configs/lmstudio.yaml
 The same adapter can point at a stronger remote model as long as the endpoint is
 OpenAI-compatible. Omit `base_url` and `api_key` from YAML and set
 `OPENAI_BASE_URL` / `OPENAI_API_KEY`, or provide them in the agent spec.
+
+Before spending calls on an experiment, validate the endpoint in three stages:
+auth/model discovery, a minimal chat completion, and the strict JSON-schema
+format used by the harness:
+
+```bash
+uv run hanabi-ck api-check configs/micro_pair_probe_deepseek_v4_flash.yaml
+```
+
+The command never prints the API key. Remote endpoints now fail immediately with
+a clear configuration error if no API key is resolved, instead of silently using
+the local LM Studio placeholder key.
 For providers that do not accept a request `seed`, set
 `vary_api_seed: false`. Provider-specific LM Studio/Qwen fields in
 `extra_body` should be removed when switching providers. A clean template is
