@@ -294,3 +294,40 @@ def test_openrouter_endpoint_uses_openrouter_api_key(monkeypatch):
     )
 
     assert agent.api_key == "test-openrouter-key"
+
+
+
+def test_select_response_text_supports_openrouter_reasoning_field():
+    from hanabi_ck.agents import _select_response_text
+
+    text, channel = _select_response_text(
+        {
+            "content": "",
+            "reasoning": "{\"action_index\": 2}",
+        }
+    )
+
+    assert channel == "reasoning"
+    assert text == "{\"action_index\": 2}"
+
+
+def test_raise_if_truncated_reports_reasoning_budget_exhaustion():
+    import pytest
+
+    from hanabi_ck.agents import _raise_if_truncated
+
+    data = {
+        "choices": [
+            {
+                "finish_reason": "length",
+                "native_finish_reason": "length",
+                "message": {
+                    "content": "",
+                    "reasoning": "still thinking",
+                },
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="hit max_tokens"):
+        _raise_if_truncated(data)
