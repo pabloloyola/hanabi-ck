@@ -331,3 +331,28 @@ def test_raise_if_truncated_reports_reasoning_budget_exhaustion():
 
     with pytest.raises(ValueError, match="hit max_tokens"):
         _raise_if_truncated(data)
+
+
+
+def test_reasoning_agent_payload_can_omit_temperature():
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+    legal = game.legal_actions(0)
+
+    agent = OpenAICompatibleAgent(
+        name="gpt-5.4",
+        model="openai/gpt-5.4",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        temperature=None,
+        max_tokens=2048,
+        extra_body={"reasoning": {"effort": "medium"}},
+        structured_output=True,
+    )
+    payload = agent._request_payload(observation, legal, "TEST")
+
+    assert "temperature" not in payload
+    assert payload["reasoning"] == {"effort": "medium"}
+    assert payload["max_tokens"] == 2048
