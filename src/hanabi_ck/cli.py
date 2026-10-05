@@ -90,6 +90,12 @@ def main() -> None:
             json.dumps(
                 {
                     "aggregate_by_condition": summary["aggregate_by_condition"],
+                    "paired_sender_convention_hint_comparisons": (
+                        summary["paired_sender_convention_hint_comparisons"]
+                    ),
+                    "paired_sender_epistemic_choice_comparisons": (
+                        summary["paired_sender_epistemic_choice_comparisons"]
+                    ),
                     "paired_receiver_vs_baseline": (
                         summary["paired_receiver_vs_baseline"]
                     ),
