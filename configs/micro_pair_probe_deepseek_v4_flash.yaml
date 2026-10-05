@@ -38,7 +38,7 @@ agent:
   base_url: https://api-opensource-ai.mde.rakuten-it.com/v1
   temperature: 0.0
   timeout_s: 180
-  max_tokens: 256
+  max_tokens: 1024
   structured_output: true
 
 agent_error_policy: abort
