@@ -279,3 +279,18 @@ def test_sender_epistemic_probe_payload_constrains_hint_and_knowledge():
     user = payload["messages"][1]["content"]
     assert "touched_indices" in user
     assert "communication_goal" in user
+
+
+def test_openrouter_endpoint_uses_openrouter_api_key(monkeypatch):
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    agent = OpenAICompatibleAgent(
+        name="openrouter-test",
+        model="anthropic/claude-sonnet-5.5",
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+    assert agent.api_key == "test-openrouter-key"
