@@ -95,13 +95,20 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
     model = str(spec["model"])
 
     explicit_key = spec.get("api_key")
-    env_key = os.getenv("OPENAI_API_KEY")
-    api_key = explicit_key or env_key
+    openrouter_key = (
+        os.getenv("OPENROUTER_API_KEY")
+        if "openrouter.ai" in base_url
+        else None
+    )
+    openai_key = os.getenv("OPENAI_API_KEY")
+    api_key = explicit_key or openrouter_key or openai_key
     key_source = (
         "config"
         if explicit_key
+        else "OPENROUTER_API_KEY"
+        if openrouter_key
         else "OPENAI_API_KEY"
-        if env_key
+        if openai_key
         else "missing"
     )
 
@@ -117,7 +124,7 @@ def check_openai_compatible_api(config_path: str | Path) -> dict[str, Any]:
     if not api_key:
         report["ok"] = False
         report["error"] = (
-            "No API key resolved. Set OPENAI_API_KEY before testing the remote endpoint."
+            "No API key resolved. Set OPENROUTER_API_KEY or OPENAI_API_KEY before testing the remote endpoint."
         )
         return report
 
