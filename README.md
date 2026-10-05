@@ -287,7 +287,7 @@ uv run hanabi-ck micro-pair \
 ```
 
 A third-model screen uses Claude Sonnet 5.5 through OpenRouter with the
-Anthropic provider pinned. Run the two-call smoke test first, then the 20-pair
+Amazon Bedrock provider pinned. Run the two-call smoke test first, then the 20-pair
 screen:
 
 ```bash
