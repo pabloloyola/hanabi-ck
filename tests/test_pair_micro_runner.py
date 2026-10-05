@@ -157,3 +157,36 @@ def test_pair_aggregation_reports_epistemic_reliance_choice():
     assert result["sender_convention_hint_rate"] == 0.5
     assert result["sender_robust_hint_rate"] == 0.5
     assert result["sender_epistemic_choice_accuracy"] == 1.0
+
+
+
+def test_pair_aggregation_supports_sender_only_samples():
+    samples = [
+        {
+            "valid": True,
+            "sender_only": True,
+            "sender_used_convention_hint": False,
+            "sender_used_robust_hint": True,
+            "sender_epistemic_choice_correct": True,
+            "sender_hint_label": "rank=1",
+            "receiver_action": None,
+        },
+        {
+            "valid": True,
+            "sender_only": True,
+            "sender_used_convention_hint": True,
+            "sender_used_robust_hint": False,
+            "sender_epistemic_choice_correct": True,
+            "sender_hint_label": "rank=2",
+            "receiver_action": None,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+
+    assert result["sender_convention_hint_rate"] == 0.5
+    assert result["sender_robust_hint_rate"] == 0.5
+    assert result["sender_epistemic_choice_accuracy"] == 1.0
+    assert result["receiver_newest_rate"] is None
+    assert result["safe_coordination_success_rate"] is None
+    assert result["convention_chain_success_rate"] is None
