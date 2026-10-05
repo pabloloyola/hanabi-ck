@@ -29,7 +29,7 @@ agent:
   temperature: null
   timeout_s: 180
   max_tokens: 2048
-  structured_output: true
+  structured_output: false
   extra_body:
     provider:
       order: ["amazon-bedrock"]
