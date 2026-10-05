@@ -327,7 +327,22 @@ class OpenAICompatibleAgent:
             base_url
             or os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1")
         ).rstrip("/")
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "lm-studio")
+        resolved_key = api_key or os.getenv("OPENAI_API_KEY")
+        is_local = (
+            self.base_url.startswith("http://localhost")
+            or self.base_url.startswith("https://localhost")
+            or self.base_url.startswith("http://127.0.0.1")
+            or self.base_url.startswith("https://127.0.0.1")
+        )
+        if resolved_key is None:
+            if is_local:
+                resolved_key = "lm-studio"
+            else:
+                raise ValueError(
+                    "No API key configured for remote OpenAI-compatible endpoint. "
+                    "Set OPENAI_API_KEY or agent.api_key."
+                )
+        self.api_key = resolved_key
         self.temperature = temperature
         self.timeout_s = timeout_s
         self.max_tokens = max_tokens
