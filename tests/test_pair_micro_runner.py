@@ -121,3 +121,39 @@ def test_pair_aggregation_separates_probe_knowledge_from_action():
     assert result["sender_probe_knowledge_to_action_gap"] == 0.5
     assert result["sender_action_matches_probe_hint_rate"] == 0.5
     assert result["sender_probe_partner_knowledge_counts"] == {"known": 2}
+
+
+
+def test_pair_aggregation_reports_epistemic_reliance_choice():
+    samples = [
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_used_robust_hint": True,
+            "sender_epistemic_choice_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+                sender_hint_label="rank=2",
+            ),
+            "sender_used_robust_hint": False,
+            "sender_epistemic_choice_correct": True,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+
+    assert result["sender_convention_hint_rate"] == 0.5
+    assert result["sender_robust_hint_rate"] == 0.5
+    assert result["sender_epistemic_choice_accuracy"] == 1.0
