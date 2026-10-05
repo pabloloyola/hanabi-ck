@@ -701,6 +701,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 num_players=scenario.num_players,
                 convention=convention,
                 informed_players=ck1_informed_players,
+                wording_variant=condition_wording_variant,
             )
             receiver_request_hash = _payload_hash(
                 receiver._request_payload(
