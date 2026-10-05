@@ -244,6 +244,25 @@ metrics. This scenario is specifically aimed at the CK2 -> CK3 transition,
 where the sender's own convention text is no longer enough: it must know that
 the receiver also has the convention.
 
+For a cheaper cross-model check, `sender_only: true` skips both receiver
+execution and receiver metrics. The GPT-5.4 configs compare only CK2 vs CK3,
+with no shadow probe, so the 20-repetition screen makes exactly 40 model calls.
+GPT-5.4 is run through OpenRouter with the OpenAI provider pinned and medium
+reasoning. Because GPT-5.4 does not accept `temperature` together with
+non-none reasoning effort, the config sets `temperature: null`.
+
+```bash
+export OPENROUTER_API_KEY=...
+
+# Two-call compatibility smoke test using the exact reasoning/provider settings.
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_smoke.yaml
+
+# 20 paired repetitions = 40 sender calls.
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_ck2_ck3.yaml
+```
+
 
 ### Cross-model screen on the Rakuten OpenAI-compatible endpoint
 
