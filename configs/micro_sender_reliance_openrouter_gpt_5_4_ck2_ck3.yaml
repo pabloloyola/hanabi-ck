@@ -1,0 +1,42 @@
+experiment: micro_sender_reliance_openrouter_gpt_5_4_ck2_ck3
+output_dir: runs
+
+scenario: sender_reliance_ck2_ck3
+conditions:
+  - ck2_shared
+  - ck3_mutual
+
+# 20 paired repetitions x 2 conditions x sender-only = 40 calls.
+repetitions: 20
+sample_seed_start: 0
+sender_only: true
+sender_shadow_probe: false
+vary_api_seed: false
+shuffle_legal_actions: true
+sender_action_order_seed: 20262001
+condition_order_seed: 20262003
+
+convention: >-
+  If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played
+  as soon as it is safe to do so.
+
+agent:
+  type: openai_compatible
+  name: gpt-5.4
+  model: openai/gpt-5.4
+  base_url: https://openrouter.ai/api/v1
+  # GPT-5.4 only accepts temperature when reasoning effort is none.
+  temperature: null
+  timeout_s: 180
+  max_tokens: 2048
+  structured_output: true
+  extra_body:
+    provider:
+      order: ["openai"]
+      allow_fallbacks: false
+    reasoning:
+      effort: medium
+
+agent_error_policy: abort
+log_raw_model_responses: true
