@@ -15,6 +15,11 @@ def _load_pyhanabi():
             "The HLE backend requires DeepMind's hanabi-learning-environment. "
             "Install the optional reference engine as documented in README.md."
         ) from exc
+    if not pyhanabi.cdef_loaded() or not pyhanabi.lib_loaded():
+        raise RuntimeError(
+            "DeepMind HLE imported, but its native pyhanabi library was not "
+            "loaded. Rebuild/install HLE as documented in README.md."
+        )
     return pyhanabi
 
 
