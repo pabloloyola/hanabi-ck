@@ -62,165 +62,248 @@ _Working presentation outline_
 
 # 1. The core question
 
-## The question is not simply:
+## Start with the vocabulary
 
-> Can an LLM play Hanabi well?
+Assume the audience knows the basic rules of Hanabi.
 
-## The question is:
+For this project, four extra ideas matter:
 
-> **Does the model change its cooperative action when only the team's epistemic state changes?**
+- **Convention** — an agreed interpretation of an action.
+- **Knowledge** — what a player can infer from its information.
+- **Epistemic state** — who knows what, including knowledge about other players' knowledge.
+- **Policy** — how an agent maps what it knows to an action.
 
----
-
-# Same game, different knowledge
-
-The **physical state can be identical**:
-
-- same cards
-- same stacks
-- same legal hints
-- same objective
-
-What changes is what the sender can assume about the receiver.
-
-That alone can change which communication strategy is rational.
+The experiment asks how these four pieces interact.
 
 ---
 
-# Three different epistemic situations
+# What is a convention?
 
-Consider a convention shared by a team:
+A **convention** is a shared rule for interpreting an otherwise ambiguous action.
 
-1. **I know the convention.**
-2. **My partner may or may not know it.**
-3. **I know that my partner knows it.**
+Example:
 
-The experiment asks whether the model treats these as meaningfully different states.
+> “If a rank hint touches my newest card, interpret the newest card as the intended play once it is safe.”
 
-Most importantly: **does its action change?**
+The hint still has its normal Hanabi meaning.
 
----
-
-# Behavior is the target
-
-A verbal statement such as
-
-> “I know that my partner knows the convention.”
-
-is useful diagnostic evidence, but it is **not the result**.
-
-Our main chain is:
+But the convention adds an extra **pragmatic meaning**:
 
 ```text
-epistemic treatment → partner model → strategy → action
+literal meaning: these cards have rank r
+extra meaning: play the newest touched card
 ```
 
-We care most about the final behavioral consequence.
-
 ---
 
-# Why ordinary task success is not enough
+# What is knowledge?
 
-| Partner knowledge | Reliable sender policy |
-|---|---|
-| Uncertain | Use a robust signal that works without the convention |
-| Known to share convention | Exploit the convention when useful |
+By **knowledge**, we mean information that is justified by what the player can observe.
 
-Both policies can occur in the **same board state**.
-
-So score alone cannot tell us whether the model used the right epistemic reasoning.
-
----
-
-# Why Hanabi?
-
-Hanabi gives us four useful ingredients:
-
-- **Cooperation:** both players have the same objective.
-- **Partial observability:** you cannot see your own cards.
-- **Restricted communication:** only legal game actions and hints.
-- **Pragmatics:** the same hint can carry extra meaning through a convention.
-
-This makes it a compact laboratory for coordination under hidden information.
-
----
-
-# Shared information ≠ mutual knowledge
-
-Suppose both players privately receive the same convention.
-
-Then:
+Example:
 
 ```text
+After a hint, Player 1 can infer:
+“my newest card must be rank 2”
+```
+
+That is different from:
+
+```text
+“my newest card happens to be rank 2”
+```
+
+The first is epistemic; the second is only a fact about the hidden state.
+
+---
+
+# Knowledge about knowledge
+
+Hanabi coordination often depends on more than:
+
+> “What do I know?”
+
+It can depend on:
+
+> “What do I know about what my partner knows?”
+
+For a convention `C`, compare:
+
+```text
+I know C
+
+vs.
+
+I know that my partner knows C
+```
+
+Those are different informational situations.
+
+---
+
+# What is an epistemic state?
+
+The **physical state** describes the game:
+
+```text
+cards, stacks, tokens, legal actions, history
+```
+
+The **epistemic state** describes the information structure:
+
+```text
+who knows what
+who knows what about the other player
+which assumptions about the partner are justified
+```
+
+Our key experiments keep the physical state fixed and change the epistemic state.
+
+---
+
+# What is a policy?
+
+A **policy** is simply the rule used to choose an action.
+
+```text
+observation + beliefs about partner
+                ↓
+             action
+```
+
+For us, the important question is not only whether a model can *describe* the partner's knowledge.
+
+It is whether that knowledge changes the model's **policy**.
+
+---
+
+# Robust vs convention-dependent communication
+
+We need one more distinction.
+
+### Robust signal
+
+Works even if the receiver does **not** know the special convention.
+
+### Convention-dependent signal
+
+Is unambiguous only if the receiver **does** know how to interpret the convention.
+
+This creates a controlled choice:
+
+```text
+uncertain partner knowledge  → prefer robust signal
+known shared convention      → convention signal becomes safe to exploit
+```
+
+---
+
+# Levels of knowledge
+
+Let `C` mean: “the team uses this convention.”
+
+```text
+Level 1
 P0 knows C
 P1 knows C
-```
 
-But P0 may still be unable to conclude:
-
-```text
-P1 knows C
-```
-
-That missing assurance can matter when choosing a signal.
-
----
-
-# Mutual knowledge ≠ common knowledge
-
-Even if:
-
-```text
+Level 2
 P0 knows that P1 knows C
 P1 knows that P0 knows C
-```
 
-there are still deeper levels:
+Level 3
+they know that the other knows that they know C
 
-```text
-P0 knows that P1 knows that P0 knows C
 ...
 ```
 
-This is why we use an **epistemic ladder** rather than treating “both were told” as common knowledge.
+Each level adds knowledge about the other player's knowledge.
 
 ---
 
-# The transition we currently care about most
+# What is common knowledge?
+
+Informally, `C` is **common knowledge** when the nesting continues without a finite stopping point:
 
 ```text
-CK2
-Both players receive the convention.
-Sender is NOT assured that receiver has it.
-
-            ↓
-
-CK3
-Both players receive the convention.
-Sender IS explicitly assured that receiver has it.
+everyone knows C
+everyone knows that everyone knows C
+everyone knows that everyone knows that everyone knows C
+...
 ```
 
-**Question:** does that assurance change the sender's policy?
+This matters because some coordination strategies are rational only when players can rely on sufficiently deep shared expectations.
+
+Important: our prompt conditions are **experimental approximations to these epistemic levels**, not proof of a model's internal formal representation.
 
 ---
 
-# Terminology caution
+# Same game, different rational action
 
-`CK2`, `CK3`, and `CK∞` are names for our **experimental treatments**.
+Now the central idea becomes simple.
 
-They do not prove that an LLM internally represents formal arbitrary-depth common knowledge.
+| Physical game | Sender's knowledge about receiver | Best communication strategy |
+|---|---|---|
+| Same cards, same stacks, same legal hints | Receiver may not know the convention | Prefer a robust signal |
+| Same cards, same stacks, same legal hints | Sender knows receiver has the convention | Convention-dependent signal can be reliable |
 
-Our current strongest claim is narrower:
+Only the **epistemic state** changes.
 
-> We test whether **partner-knowledge assurance** changes cooperative action selection.
+Therefore the rational **policy** can change.
+
+---
+
+# The core research question
+
+> **Does an LLM change its cooperative action when only what it knows about its partner's knowledge changes?**
+
+Equivalently:
+
+```text
+same physical state
+same objective
+same legal actions
+
+but
+
+“my partner may know the convention”
+                 vs.
+“I know my partner knows the convention”
+```
+
+Does the model choose differently?
+
+---
+
+# Behavior is the evidence
+
+A model saying
+
+> “I know that my partner knows the convention”
+
+is useful diagnostic evidence.
+
+But our primary evidence is behavioral:
+
+```text
+epistemic treatment
+        ↓
+model of partner
+        ↓
+communication strategy
+        ↓
+chosen action
+```
+
+If the action does not change when reliability should change, verbal recognition alone is not enough.
 
 ---
 
 # Section 1 takeaway
 
-> **Keep the game fixed. Change only what the sender can assume about the partner. Then observe whether the sender changes its action.**
+> **Keep the Hanabi situation fixed. Change only what the sender is justified in assuming about the receiver. Then ask whether the sender changes its action.**
 
-That is the central experimental idea.
+That is the central idea behind Hanabi-CK.
 
 ---
 # Working plan
