@@ -32,6 +32,63 @@ other, while the baseline should still produce successful plays and a non-zero
 score. The baseline only plays cards that are provably playable under its
 hint-derived public knowledge.
 
+## Game backends
+
+Full-game experiments now run through a small backend interface.
+
+The default remains the existing pure-Python engine:
+
+```yaml
+backend: native
+```
+
+This preserves current experiment behavior and remains the backend used for
+controlled/injected microstates.
+
+A second optional backend wraps DeepMind's archived Hanabi Learning Environment
+(HLE):
+
+```yaml
+backend: hle
+```
+
+The HLE adapter is intended for standard full-game trajectories and as an
+independent mechanics reference. It normalizes HLE's zero-based ranks and
+relative hint targets into the same `Action` / `PlayerObservation` schema used
+by the native backend. HLE exposes the remaining deck size but not the identities
+of undealt cards, so `researcher_true_state_before["deck"]` is `null` for that
+backend.
+
+HLE is deliberately **not** a mandatory dependency. The official repository is
+an archived C++/CFFI project with a legacy build setup, so install it explicitly
+when running reference-backend or parity tests. The adapter is pinned/documented
+against DeepMind commit `54e79594f4b6fb40ebb3004289c6db0e34a8b5fb`:
+
+```bash
+uv sync --extra dev
+uv pip install --python .venv/bin/python scikit-build cmake ninja cffi
+uv pip install --python .venv/bin/python --no-build-isolation \
+  "git+https://github.com/google-deepmind/hanabi-learning-environment.git@54e79594f4b6fb40ebb3004289c6db0e34a8b5fb"
+uv run pytest tests/test_backends.py
+```
+
+Without HLE installed, the HLE-specific tests skip while the native backend tests
+continue to run.
+
+The architectural boundary is intentional:
+
+```text
+CK treatment / agents / logging
+             |
+        HanabiBackend
+        /           \
+   native            HLE
+ microstates     canonical games
+```
+
+CK0/CK1/CK2/CK3/CK∞ remain experimental prompt treatments above the game
+backend; they are not implemented inside HLE.
+
 ## Run a local LLM (LM Studio / OpenAI-compatible API)
 
 Start an OpenAI-compatible server, then:
