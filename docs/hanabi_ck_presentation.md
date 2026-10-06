@@ -94,6 +94,167 @@ _Working presentation outline_
 
 ---
 
+# 1. The core question
+
+## Can an LLM act differently because of what it knows about its partner's knowledge?
+
+The central question is **not** simply:
+
+> Can the model solve Hanabi?
+
+It is:
+
+> **Can the model condition a cooperative action on the epistemic state of the team?**
+
+In other words, can it distinguish between:
+
+- “I know the convention.”
+- “My partner may or may not know the convention.”
+- “I know that my partner knows the convention.”
+
+…and then **change its action accordingly**?
+
+---
+
+# The object we want to measure
+
+A useful way to think about the experiment is as a causal chain:
+
+```text
+information given to the agent
+            ↓
+what the agent can infer about the partner
+            ↓
+which communication strategy is reliable
+            ↓
+which action the agent chooses
+            ↓
+coordination outcome
+```
+
+The key measurement is therefore **behavioral**.
+
+A model saying
+
+> “I know that my partner knows the convention”
+
+is not enough.
+
+We want to see whether that belief actually changes the selected action.
+
+---
+
+# Why this is a harder question than ordinary task success
+
+Two agents can face the **same physical game state** but rationally choose different actions because their knowledge about each other is different.
+
+| Physical situation | What the sender knows about the receiver | Rational communication policy |
+|---|---|---|
+| Same cards, same stacks, same legal hints | Receiver's convention knowledge is uncertain | Prefer a robust signal that works without the convention |
+| Same cards, same stacks, same legal hints | Sender knows receiver has the convention | It is safe to exploit the convention |
+
+So the experimental variable is not the board.
+
+It is the **epistemic relationship between the players**.
+
+This lets us ask whether the model is sensitive to something that is invisible in the physical state but crucial for coordination.
+
+---
+
+# Why Hanabi is a good testbed
+
+Hanabi has several properties that make this unusually clean:
+
+1. **Cooperative objective**  
+   Both players want exactly the same outcome.
+
+2. **Partial observability**  
+   A player cannot see its own cards but can see its partner's cards.
+
+3. **Restricted communication**  
+   Players cannot freely explain their intentions; they communicate through legal Hanabi hints and actions.
+
+4. **Actions can carry pragmatic meaning**  
+   A hint can communicate more than its literal card information if both players share a convention.
+
+5. **We can hold the physical state fixed**  
+   Then we manipulate only what each agent is told about the convention and about the partner's knowledge.
+
+That makes Hanabi a controlled laboratory for studying **coordination under nested knowledge**.
+
+---
+
+# The important distinction: shared information is not automatically common knowledge
+
+Suppose both players independently receive the same convention.
+
+That establishes:
+
+```text
+P0 knows the convention
+P1 knows the convention
+```
+
+But it does **not necessarily establish**:
+
+```text
+P0 knows that P1 knows it
+P1 knows that P0 knows it
+```
+
+And that still does not automatically establish deeper levels such as:
+
+```text
+P0 knows that P1 knows that P0 knows it
+...
+```
+
+This hierarchy is exactly why “everyone received the same instruction” and “the instruction is common knowledge” are different experimental treatments.
+
+---
+
+# What we mean by “common knowledge” in this project
+
+We use a ladder of increasingly strong epistemic treatments.
+
+At this stage, the most important transition is:
+
+```text
+CK2
+Both players receive the convention,
+but the sender is not assured that the receiver has it.
+
+                 ↓
+
+CK3
+Both players receive the convention,
+and the sender is explicitly told that the receiver has it.
+```
+
+The crucial question is:
+
+> **Does that extra assurance change the sender's policy?**
+
+Later we also include a public/common declaration, `CK∞`, but we should be careful: these are **controlled prompt treatments**, not proof that an LLM has internally constructed arbitrary-depth formal common knowledge.
+
+---
+
+# Section 1 takeaway
+
+If the audience remembers only one sentence, it should be this:
+
+> **We are testing whether an LLM's cooperative policy changes when only the team's epistemic state changes.**
+
+The cards can stay the same.
+
+The legal actions can stay the same.
+
+What changes is what the sender is entitled to assume about the receiver's knowledge.
+
+That is the phenomenon the rest of the presentation will isolate experimentally.
+
+---
+
 # Working plan
 
 We will build this presentation one section at a time.
@@ -105,4 +266,4 @@ For each section:
 3. Review and simplify the story.
 4. Commit the updated Markdown file.
 
-Next section to write: **1. The core question**.
+Next section to write: **2. Hanabi basics for this project**.
