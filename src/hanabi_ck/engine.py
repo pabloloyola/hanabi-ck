@@ -126,6 +126,7 @@ class HanabiGame:
         return {
             "hands": [[c.to_dict() for c in hand] for hand in self.hands],
             "deck": [c.to_dict() for c in self.deck],
+            "deck_size": len(self.deck),
             "stacks": dict(self.stacks),
             "discards": [c.to_dict() for c in self.discards],
             "information_tokens": self.information_tokens,
