@@ -492,6 +492,188 @@ Later we will freeze this setup and manipulate only what the players know about 
 That separation gives us the controlled setting we need for studying conventions, partner knowledge, and reliable communication.
 
 ---
+# 3. The experimental CK ladder
+
+## Turning epistemic ideas into controlled treatments
+
+We vary **who has the convention** and **what each player is told about the other's knowledge**.
+
+Let `C` denote the convention.
+
+Across conditions, the Hanabi state stays fixed.
+
+What changes is the information delivered to the agents.
+
+---
+
+# CK0 — no convention
+
+Neither player is given `C`.
+
+```text
+P0: no convention
+P1: no convention
+```
+
+This is the baseline.
+
+If a hint is ambiguous under ordinary Hanabi information, the agents cannot rely on our experimental convention to resolve it.
+
+---
+
+# CK1 — private convention
+
+One designated player receives `C`.
+
+In our sender-focused experiments, that is usually Player 0.
+
+```text
+P0 receives C
+P1 does not receive C
+```
+
+Crucially, P0's instruction does **not** tell it whether P1 also received the convention.
+
+So from P0's point of view:
+
+> “I know C, but I cannot rely on P1 knowing C.”
+
+---
+
+# CK2 — both privately receive the convention
+
+Now both players actually receive `C`.
+
+```text
+P0 receives C
+P1 receives C
+```
+
+But the instructions are private.
+
+P0 is **not told** that P1 received it, and vice versa.
+
+So the experimenter knows both have `C`, while each player lacks assurance about the other.
+
+---
+
+# CK1 vs CK2: a subtle but important difference
+
+From the **experimenter's** perspective:
+
+| Condition | Does P1 actually have `C`? |
+|---|---:|
+| CK1 | No |
+| CK2 | Yes |
+
+But from the **informed sender's local instruction**, both can look the same:
+
+```text
+"I have C."
+"My instructions do not establish whether P1 has C."
+```
+
+This lets us separate **actual partner knowledge** from **knowledge about partner knowledge**.
+
+---
+
+# CK3 — explicit assurance of shared convention
+
+Both players receive `C`, and each is explicitly told that the other received the same convention.
+
+```text
+P0 knows C
+P1 knows C
+P0 knows P1 has C
+P1 knows P0 has C
+```
+
+Now the sender is justified in relying on the receiver's convention knowledge.
+
+This CK2 → CK3 transition is the central manipulation in our current result.
+
+---
+
+# CK∞ — public/common declaration
+
+The convention is presented as public/common knowledge.
+
+Intuitively:
+
+```text
+everyone has C
+everyone knows everyone has C
+everyone knows that everyone knows everyone has C
+...
+```
+
+This treatment is intended to approximate an arbitrary-depth common-knowledge declaration.
+
+It is stronger than the finite assurance used in CK3.
+
+---
+
+# The ladder at a glance
+
+| Condition | Sender has `C` | Receiver actually has `C` | Sender assured receiver has `C` |
+|---|:---:|:---:|:---:|
+| CK0 | No | No | No |
+| CK1 | Yes | No | **No / unknown** |
+| CK2 | Yes | Yes | **No / unknown** |
+| CK3 | Yes | Yes | **Yes** |
+| CK∞ | Yes | Yes | **Public/common declaration** |
+
+The final column is especially important for our reliance experiment.
+
+---
+
+# Why CK2 → CK3 is so useful
+
+Between CK2 and CK3:
+
+```text
+same convention
+same physical Hanabi state
+same legal actions
+same sender objective
+same receiver actually having the convention
+```
+
+The key change is only:
+
+```text
+CK2: sender cannot assume receiver knows C
+CK3: sender is explicitly assured receiver knows C
+```
+
+This gives us a clean test of **partner-knowledge assurance**.
+
+---
+
+# The treatment labels are experimental names
+
+`CK0`, `CK1`, `CK2`, `CK3`, and `CK∞` are convenient labels for our prompt treatments.
+
+They should not be read as a theorem that the model internally represents exactly that formal epistemic depth.
+
+For example:
+
+- CK3 gives explicit finite mutual assurance.
+- CK∞ uses a public/common-knowledge declaration.
+
+Our evidence comes from how behavior changes across these treatments.
+
+---
+
+# Section 3 takeaway
+
+> **The ladder separates having a convention from knowing that your partner has the convention.**
+
+For the main experiment, CK2 and CK3 are especially valuable because the receiver has the convention in both conditions.
+
+The difference is whether the sender is justified in relying on that fact.
+
+---
 # Working plan
 
 We will build this presentation one section at a time.
@@ -503,4 +685,4 @@ For each section:
 3. Review and simplify the story.
 4. Commit the updated Markdown file.
 
-Next section to write: **3. The experimental CK ladder**.
+Next section to write: **4. Harness architecture**.
