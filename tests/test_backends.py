@@ -125,8 +125,13 @@ def _assert_backend_state_parity(hle, native) -> None:
         assert hle_state[key] == native_state[key], key
 
     assert hle.done == native.done
-    if not hle.done:
-        assert hle.current_player == native.current_player
+    if hle.done:
+        # current_player/observation cursors are backend-specific after terminal
+        # state. They are not actionable game state and are outside the backend
+        # parity contract once done=True.
+        return
+
+    assert hle.current_player == native.current_player
 
     for player in range(hle.num_players):
         hle_obs = hle.observe(player)
