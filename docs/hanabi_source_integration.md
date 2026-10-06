@@ -157,9 +157,11 @@ adapter/export layer rather than move its core experiments into that stack.
 - [x] Add optional `HLEHanabiBackend`.
 - [x] Route the full-game runner through a backend factory.
 - [x] Add initial native/HLE parity checks.
-- [ ] Run the HLE parity suite on a machine with the native HLE library built.
-- [ ] Expand parity coverage across long seeded trajectories and final-round
-      behavior.
+- [x] Run the HLE parity suite on Apple Silicon macOS with the native HLE library built.
+- [x] Expand parity coverage to discard-token recovery, life exhaustion, and
+      full seeded trajectories through the final round.
+- [ ] Add targeted parity coverage for rank-5 token recovery and additional
+      player counts (3-5 players).
 
 ### Phase B — mechanical scaffold axis
 
@@ -193,3 +195,21 @@ Only if training becomes a project goal:
 - export trajectories to a Verifiers-compatible format;
 - optionally expose a `load_environment` adapter;
 - keep Prime/Verifiers dependencies outside the core package.
+
+
+## Validation status
+
+On Apple Silicon macOS with Python 3.12.13, the pinned HLE revision builds and
+loads successfully with the modern-CMake compatibility flag
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
+
+The first integrated validation run produced:
+
+```text
+tests/test_backends.py: 6 passed
+full repository suite: 68 passed
+HLE smoke game: valid, score 15, 68 turns, 0 misplays
+```
+
+The parity suite has since been expanded further; rerun it after pulling the
+latest main branch.
