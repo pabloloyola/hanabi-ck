@@ -177,6 +177,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                         {
                             "event_kind": "agent_error",
                             "experiment": experiment,
+                            "backend": backend_name,
                             "condition": condition_name,
                             "condition_description": condition.description,
                             "seed": seed,
@@ -240,6 +241,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                 record = {
                     "event_kind": "turn",
                     "experiment": experiment,
+                    "backend": backend_name,
                     "condition": condition_name,
                     "condition_description": condition.description,
                     "seed": seed,
