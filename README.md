@@ -275,8 +275,8 @@ CK3 meta-information to a closely matched contrast:
 - CK3: the sender has the convention, and its instructions explicitly establish
   that the other player has the same convention.
 
-Matched 20-pair wording controls are available for GPT-5.4 and DeepSeek V4
-Flash:
+Matched 20-pair wording controls are available for GPT-5.4, DeepSeek V4
+Flash, and Claude Sonnet 5.5:
 
 ```bash
 uv run hanabi-ck micro-pair \
@@ -284,6 +284,9 @@ uv run hanabi-ck micro-pair \
 
 uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_deepseek_v4_flash_ck2_ck3_minimal_pair.yaml
+
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_sonnet_5_5_ck2_ck3_minimal_pair.yaml
 ```
 
 A third-model screen uses Claude Sonnet 5.5 through OpenRouter with the
