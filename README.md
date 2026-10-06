@@ -62,15 +62,18 @@ backend.
 HLE is deliberately **not** a mandatory dependency. The official repository is
 an archived C++/CFFI project with a legacy build setup, so install it explicitly
 when running reference-backend or parity tests. The adapter is pinned/documented
-against DeepMind commit `54e79594f4b6fb40ebb3004289c6db0e34a8b5fb`:
+against DeepMind commit `54e79594f4b6fb40ebb3004289c6db0e34a8b5fb`.
+
+On Apple Silicon macOS, use the checked-in helper:
 
 ```bash
-uv sync --extra dev
-uv pip install --python .venv/bin/python scikit-build cmake ninja cffi
-uv pip install --python .venv/bin/python --no-build-isolation \
-  "git+https://github.com/google-deepmind/hanabi-learning-environment.git@54e79594f4b6fb40ebb3004289c6db0e34a8b5fb"
-uv run pytest tests/test_backends.py
+bash scripts/install_hle_macos.sh
+uv run pytest tests/test_backends.py -v
 ```
+
+The helper applies the modern-CMake compatibility flag
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, which is required because HLE's 2021
+root `CMakeLists.txt` still declares CMake 2.8.11 compatibility.
 
 Without HLE installed, the HLE-specific tests skip while the native backend tests
 continue to run.
