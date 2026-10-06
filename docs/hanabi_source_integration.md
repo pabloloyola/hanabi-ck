@@ -158,8 +158,8 @@ adapter/export layer rather than move its core experiments into that stack.
 - [x] Route the full-game runner through a backend factory.
 - [x] Add initial native/HLE parity checks.
 - [x] Run the HLE parity suite on Apple Silicon macOS with the native HLE library built.
-- [x] Expand parity coverage to discard-token recovery, life exhaustion, and
-      full seeded trajectories through the final round.
+- [ ] Validate expanded parity coverage for discard-token recovery, life
+      exhaustion, and full seeded trajectories through the final round.
 - [ ] Add targeted parity coverage for rank-5 token recovery and additional
       player counts (3-5 players).
 
@@ -211,5 +211,8 @@ full repository suite: 68 passed
 HLE smoke game: valid, score 15, 68 turns, 0 misplays
 ```
 
-The parity suite has since been expanded further; rerun it after pulling the
-latest main branch.
+The parity suite has since been expanded further. During validation we found
+that HLE and the native engine keep different post-terminal current-player
+cursors. This is not actionable game state, so parity now explicitly ends
+current-player/observation comparison once both backends report `done=True`.
+The expanded suite must be rerun before marking that milestone complete.
