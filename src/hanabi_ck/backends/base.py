@@ -20,6 +20,11 @@ class HanabiBackend(Protocol):
 
     @property
     def current_player(self) -> int:
+        """Player to act while done is False.
+
+        Backends may retain different internal cursors after terminal state;
+        callers must not treat current_player as meaningful once done is True.
+        """
         ...
 
     @property
