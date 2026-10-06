@@ -9,8 +9,8 @@ import yaml
 
 from .actions import Action
 from .agents import AgentDecision, OpenAICompatibleAgent, RandomAgent, SimpleAgent
+from .backends import BACKEND_NAMES, create_backend
 from .conditions import DEFAULT_CONVENTION, get_condition
-from .engine import HanabiGame
 from .logging import JsonlLogger
 from .metrics import aggregate_games, summarize_game
 
@@ -103,6 +103,12 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
     ck1_informed_players = {
         int(p) for p in cfg.get("ck1_informed_players", [0])
     }
+    backend_name = str(cfg.get("backend", "native")).strip().lower()
+    if backend_name not in BACKEND_NAMES:
+        raise ValueError(
+            f"backend must be one of {sorted(BACKEND_NAMES)}"
+        )
+
     error_policy = str(cfg.get("agent_error_policy", "abort"))
     if error_policy not in ERROR_POLICIES:
         raise ValueError(
@@ -118,7 +124,11 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
     for condition_name in conditions:
         condition = get_condition(condition_name)
         for seed in seeds:
-            game = HanabiGame(num_players=num_players, seed=seed)
+            game = create_backend(
+                backend_name,
+                num_players=num_players,
+                seed=seed,
+            )
             agents = [
                 _build_agent(spec, seed=(seed * 1000 + p))
                 for p, spec in enumerate(agent_specs)
@@ -284,6 +294,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     "experiment": experiment,
                     "condition": condition_name,
                     "seed": seed,
+                    "backend": backend_name,
                     "valid": not aborted,
                     "aborted": aborted,
                     "abort_reason": abort_reason,
@@ -307,6 +318,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
         "experiment": experiment,
         "config_path": str(config_path),
         "num_players": num_players,
+        "backend": backend_name,
         "seeds": seeds,
         "conditions": conditions,
         "agent_error_policy": error_policy,
