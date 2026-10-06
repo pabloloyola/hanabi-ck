@@ -1,8 +1,31 @@
 ---
 marp: true
+theme: default
+size: 16:9
 title: Hanabi-CK: Testing Common-Knowledge-Sensitive Coordination in LLM Agents
 description: Working presentation outline for explaining the Hanabi common-knowledge testbed and current results.
 paginate: true
+style: |
+  section {
+    font-size: 28px;
+    padding: 44px 60px;
+  }
+  h1 {
+    font-size: 42px;
+    margin-bottom: 0.55em;
+  }
+  h2 {
+    font-size: 32px;
+  }
+  table {
+    font-size: 21px;
+  }
+  pre, code {
+    font-size: 20px;
+  }
+  blockquote {
+    font-size: 27px;
+  }
 ---
 
 # Hanabi-CK
@@ -13,248 +36,193 @@ _Working presentation outline_
 
 ---
 
-# Table of contents
+# Table of contents — foundations
 
 1. **The core question**
-   - What are we trying to measure?
-   - Why Hanabi is a good testbed for coordination and hidden information.
-   - What we mean, and do not mean, by “common knowledge.”
-
 2. **Hanabi basics for this project**
-   - What each player can and cannot see.
-   - What a hint does.
-   - Why a play can be physically correct but epistemically unsafe.
-
-3. **The experimental ladder**
-   - CK0: no convention.
-   - CK1: private convention.
-   - CK2: everyone has the convention, but no assurance about others.
-   - CK3: explicit assurance that the partner has the convention.
-   - CK∞: convention declared public/common knowledge.
-
-4. **The harness architecture**
-   - Deterministic Hanabi engine.
-   - Agent interface.
-   - Condition prompts.
-   - JSONL logs.
-   - Metrics and paired comparisons.
-
+3. **The experimental CK ladder**
+4. **Harness architecture**
 5. **Early failures and harness fixes**
-   - Agents discard forever when no play policy exists.
-   - Reasoning-model output appears in `reasoning_content` instead of `content`.
-   - Structured-output support differs across providers.
-   - Why we log raw API responses and abort invalid games.
+6. **Receiver micro-diagnostic**
+7. **Sender → receiver diagnostic**
 
-6. **Micro-diagnostic 1: receiver chooses newest safe card**
-   - The one-step newest-card scenario.
-   - What the model must infer.
-   - Action/probe gap: recognizing the convention is not the same as acting on it.
+---
 
-7. **Micro-diagnostic 2: sender → receiver convention use**
-   - Sender must choose one hint.
-   - Receiver then acts.
-   - What sender convention use and receiver follow-through measure.
+# Table of contents — evidence
 
 8. **The key CK2 → CK3 reliance scenario**
-   - Robust rank-1 hint: uniquely makes newest card playable.
-   - Convention rank-2 hint: makes three cards playable and requires shared convention.
-   - Why CK2 and CK3 should lead to different sender policies.
-
-9. **Main result: model differences**
-   - GPT-5.4: strong CK2 → CK3 policy switch.
-   - DeepSeek V4 Flash: convention use remains high in CK2 and CK3.
-   - Claude Sonnet 5.5: mostly DeepSeek-like in this scenario.
-
+9. **Main cross-model result**
 10. **Minimal-pair wording control**
-    - Why we needed it.
-    - What changed in the wording.
-    - What stayed fixed.
-    - Why the GPT-5.4 effect survived.
-
 11. **What the traces show**
-    - GPT-5.4 suppresses convention reliance under partner-knowledge uncertainty.
-    - Sonnet and DeepSeek often identify the convention but still rely on it in CK2.
-    - Evidence for an epistemic-recognition vs policy-integration gap.
-
-12. **How to interpret the result carefully**
-    - This is not a proof that a model “understands common knowledge.”
-    - It is evidence about finite partner-knowledge assurance and action selection.
-    - The core claim: epistemic state modulates policy in GPT-5.4 much more than in the other tested models.
-
+12. **Careful interpretation**
 13. **Next experiments**
-    - Replicate the reliance structure with a second Hanabi state.
-    - Add model × condition statistical analysis.
-    - Add cross-play and convention-conflict experiments.
-    - Turn the harness into a reusable evaluation suite.
-
 14. **Takeaways**
-    - Hanabi gives us controlled cooperative signaling problems.
-    - The harness separates recognition, reasoning, and action.
-    - Current evidence points to large model differences in epistemic-policy integration.
 
 ---
 
 # 1. The core question
 
-## Can an LLM act differently because of what it knows about its partner's knowledge?
+## The question is not simply:
 
-The central question is **not** simply:
+> Can an LLM play Hanabi well?
 
-> Can the model solve Hanabi?
+## The question is:
 
-It is:
-
-> **Can the model condition a cooperative action on the epistemic state of the team?**
-
-In other words, can it distinguish between:
-
-- “I know the convention.”
-- “My partner may or may not know the convention.”
-- “I know that my partner knows the convention.”
-
-…and then **change its action accordingly**?
+> **Does the model change its cooperative action when only the team's epistemic state changes?**
 
 ---
 
-# The object we want to measure
+# Same game, different knowledge
 
-A useful way to think about the experiment is as a causal chain:
+The **physical state can be identical**:
+
+- same cards
+- same stacks
+- same legal hints
+- same objective
+
+What changes is what the sender can assume about the receiver.
+
+That alone can change which communication strategy is rational.
+
+---
+
+# Three different epistemic situations
+
+Consider a convention shared by a team:
+
+1. **I know the convention.**
+2. **My partner may or may not know it.**
+3. **I know that my partner knows it.**
+
+The experiment asks whether the model treats these as meaningfully different states.
+
+Most importantly: **does its action change?**
+
+---
+
+# Behavior is the target
+
+A verbal statement such as
+
+> “I know that my partner knows the convention.”
+
+is useful diagnostic evidence, but it is **not the result**.
+
+Our main chain is:
 
 ```text
-information given to the agent
-            ↓
-what the agent can infer about the partner
-            ↓
-which communication strategy is reliable
-            ↓
-which action the agent chooses
-            ↓
-coordination outcome
+epistemic treatment → partner model → strategy → action
 ```
 
-The key measurement is therefore **behavioral**.
-
-A model saying
-
-> “I know that my partner knows the convention”
-
-is not enough.
-
-We want to see whether that belief actually changes the selected action.
+We care most about the final behavioral consequence.
 
 ---
 
-# Why this is a harder question than ordinary task success
+# Why ordinary task success is not enough
 
-Two agents can face the **same physical game state** but rationally choose different actions because their knowledge about each other is different.
+| Partner knowledge | Reliable sender policy |
+|---|---|
+| Uncertain | Use a robust signal that works without the convention |
+| Known to share convention | Exploit the convention when useful |
 
-| Physical situation | What the sender knows about the receiver | Rational communication policy |
-|---|---|---|
-| Same cards, same stacks, same legal hints | Receiver's convention knowledge is uncertain | Prefer a robust signal that works without the convention |
-| Same cards, same stacks, same legal hints | Sender knows receiver has the convention | It is safe to exploit the convention |
+Both policies can occur in the **same board state**.
 
-So the experimental variable is not the board.
-
-It is the **epistemic relationship between the players**.
-
-This lets us ask whether the model is sensitive to something that is invisible in the physical state but crucial for coordination.
+So score alone cannot tell us whether the model used the right epistemic reasoning.
 
 ---
 
-# Why Hanabi is a good testbed
+# Why Hanabi?
 
-Hanabi has several properties that make this unusually clean:
+Hanabi gives us four useful ingredients:
 
-1. **Cooperative objective**  
-   Both players want exactly the same outcome.
+- **Cooperation:** both players have the same objective.
+- **Partial observability:** you cannot see your own cards.
+- **Restricted communication:** only legal game actions and hints.
+- **Pragmatics:** the same hint can carry extra meaning through a convention.
 
-2. **Partial observability**  
-   A player cannot see its own cards but can see its partner's cards.
-
-3. **Restricted communication**  
-   Players cannot freely explain their intentions; they communicate through legal Hanabi hints and actions.
-
-4. **Actions can carry pragmatic meaning**  
-   A hint can communicate more than its literal card information if both players share a convention.
-
-5. **We can hold the physical state fixed**  
-   Then we manipulate only what each agent is told about the convention and about the partner's knowledge.
-
-That makes Hanabi a controlled laboratory for studying **coordination under nested knowledge**.
+This makes it a compact laboratory for coordination under hidden information.
 
 ---
 
-# The important distinction: shared information is not automatically common knowledge
+# Shared information ≠ mutual knowledge
 
-Suppose both players independently receive the same convention.
+Suppose both players privately receive the same convention.
 
-That establishes:
+Then:
 
 ```text
-P0 knows the convention
-P1 knows the convention
+P0 knows C
+P1 knows C
 ```
 
-But it does **not necessarily establish**:
+But P0 may still be unable to conclude:
 
 ```text
-P0 knows that P1 knows it
-P1 knows that P0 knows it
+P1 knows C
 ```
 
-And that still does not automatically establish deeper levels such as:
+That missing assurance can matter when choosing a signal.
+
+---
+
+# Mutual knowledge ≠ common knowledge
+
+Even if:
 
 ```text
-P0 knows that P1 knows that P0 knows it
+P0 knows that P1 knows C
+P1 knows that P0 knows C
+```
+
+there are still deeper levels:
+
+```text
+P0 knows that P1 knows that P0 knows C
 ...
 ```
 
-This hierarchy is exactly why “everyone received the same instruction” and “the instruction is common knowledge” are different experimental treatments.
+This is why we use an **epistemic ladder** rather than treating “both were told” as common knowledge.
 
 ---
 
-# What we mean by “common knowledge” in this project
-
-We use a ladder of increasingly strong epistemic treatments.
-
-At this stage, the most important transition is:
+# The transition we currently care about most
 
 ```text
 CK2
-Both players receive the convention,
-but the sender is not assured that the receiver has it.
+Both players receive the convention.
+Sender is NOT assured that receiver has it.
 
-                 ↓
+            ↓
 
 CK3
-Both players receive the convention,
-and the sender is explicitly told that the receiver has it.
+Both players receive the convention.
+Sender IS explicitly assured that receiver has it.
 ```
 
-The crucial question is:
+**Question:** does that assurance change the sender's policy?
 
-> **Does that extra assurance change the sender's policy?**
+---
 
-Later we also include a public/common declaration, `CK∞`, but we should be careful: these are **controlled prompt treatments**, not proof that an LLM has internally constructed arbitrary-depth formal common knowledge.
+# Terminology caution
+
+`CK2`, `CK3`, and `CK∞` are names for our **experimental treatments**.
+
+They do not prove that an LLM internally represents formal arbitrary-depth common knowledge.
+
+Our current strongest claim is narrower:
+
+> We test whether **partner-knowledge assurance** changes cooperative action selection.
 
 ---
 
 # Section 1 takeaway
 
-If the audience remembers only one sentence, it should be this:
+> **Keep the game fixed. Change only what the sender can assume about the partner. Then observe whether the sender changes its action.**
 
-> **We are testing whether an LLM's cooperative policy changes when only the team's epistemic state changes.**
-
-The cards can stay the same.
-
-The legal actions can stay the same.
-
-What changes is what the sender is entitled to assume about the receiver's knowledge.
-
-That is the phenomenon the rest of the presentation will isolate experimentally.
+That is the central experimental idea.
 
 ---
-
 # Working plan
 
 We will build this presentation one section at a time.
