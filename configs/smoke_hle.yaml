@@ -1,0 +1,23 @@
+experiment: smoke_hle
+output_dir: runs
+
+backend: hle
+num_players: 2
+seeds: [0]
+conditions:
+  - ck0
+
+convention: >-
+  If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played
+  as soon as it is safe to do so.
+
+agents:
+  - type: simple
+    name: simple_A
+  - type: simple
+    name: simple_B
+
+agent_error_policy: abort
+log_private_instructions: true
+log_raw_model_responses: true
