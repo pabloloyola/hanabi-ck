@@ -4,7 +4,7 @@ from typing import Any
 
 from ..actions import Action
 from ..engine import StepResult
-from ..observations import PlayerObservation, play_safety_annotations
+from ..observations import COLORS, PlayerObservation, play_safety_annotations
 
 
 def _load_pyhanabi():
@@ -78,13 +78,15 @@ class HLEHanabiBackend:
         }
 
     def _stacks(self) -> dict[str, int]:
-        return {
+        by_hle_color = {
             color: int(level)
             for color, level in zip(
                 self._pyhanabi.COLOR_CHAR,
                 self._state.fireworks(),
             )
         }
+        # Normalize dictionary order to the native backend for stable prompts.
+        return {color: by_hle_color[color] for color in COLORS}
 
     def _own_knowledge(self, player: int) -> list[dict[str, Any]]:
         observation = self._state.observation(player)
@@ -97,11 +99,11 @@ class HLEHanabiBackend:
         for item in knowledge:
             out.append(
                 {
-                    "possible_colors": [
+                    "possible_colors": sorted(
                         color
                         for color_index, color in enumerate(colors)
                         if item.color_plausible(color_index)
-                    ],
+                    ),
                     "possible_ranks": [
                         rank_index + 1
                         for rank_index in range(num_ranks)
