@@ -306,6 +306,192 @@ If the action does not change when reliability should change, verbal recognition
 That is the central idea behind Hanabi-CK.
 
 ---
+# 2. Hanabi basics for this project
+
+## We only need a small part of Hanabi
+
+For the experiments in this presentation, focus on four mechanics:
+
+- you see your partner's cards, but not your own
+- a hint reveals a **color** or **rank**
+- a legal hint applies to **all matching cards**
+- hints also create useful **negative information**
+
+The last point is especially important for our micro-experiments.
+
+---
+
+# What each player can see
+
+Two-player Hanabi:
+
+```text
+Player 0                         Player 1
+
+own hand:   ?  ?  ?  ?  ?       own hand:   ?  ?  ?  ?  ?
+sees P1:    W1 R2 G2 B1 Y2       sees P0:    visible cards
+```
+
+A player can reason about the partner's cards directly.
+
+But for its **own** cards, it must rely on hints and public information.
+
+---
+
+# What a hint literally means
+
+Suppose Player 1 has five cards:
+
+```text
+index:      0   1   2   3   4
+truth:      W1  R2  G2  B1  Y2
+```
+
+A rank-2 hint touches exactly:
+
+```text
+            .   ✓   ✓   .   ✓
+```
+
+So Player 1 learns:
+
+- cards 1, 2, 4 are rank 2
+- cards 0, 3 are **not** rank 2
+
+A hint communicates both positive and negative information.
+
+---
+
+# Negative information can be the key
+
+Suppose Player 1 already knows its newest card is:
+
+```text
+index 4: color = Y
+         rank ∈ {1, 2}
+```
+
+Now Player 0 gives a **rank-1 hint** that touches cards 0 and 3.
+
+Because index 4 was **not** touched:
+
+```text
+index 4 is not rank 1
+rank ∈ {1,2}
+        ↓
+rank = 2
+```
+
+So the receiver can infer that its newest card is exactly `Y2`.
+
+---
+
+# Truth is not the same as knowledge
+
+This distinction is central to our evaluation.
+
+| Question | Example |
+|---|---|
+| Is the hidden card actually playable? | The card happens to be `Y2` and the Y stack is at 1 |
+| Does the player know it is playable? | Its hint-derived knowledge rules out every unsafe possibility |
+
+A physically correct play can still be **epistemically unjustified**.
+
+We therefore do not measure only whether a card happened to succeed.
+
+---
+
+# What does “provably playable” mean?
+
+A card is **provably playable** when every card identity still consistent with the player's information is currently playable.
+
+Example:
+
+```text
+knowledge: Y{1,2}
+Y stack:   1
+```
+
+This is **not** provably playable:
+
+- `Y1` would already be obsolete
+- `Y2` would be playable
+
+After ruling out rank 1:
+
+```text
+knowledge: Y2
+```
+
+the card becomes provably playable.
+
+---
+
+# Why we expose these deductions to the model
+
+Our micro-diagnostics are trying to test:
+
+> Does the model use the team's epistemic state correctly?
+
+Not:
+
+> Can the model perfectly simulate every Hanabi deduction in its head?
+
+So the harness can provide mechanical annotations such as:
+
+```text
+hint rank 1 → provably playable: [4]
+hint rank 2 → provably playable: [1, 2, 4]
+```
+
+These annotations are computed from public/hint-derived information, not hidden cards.
+
+---
+
+# Card order matters for our convention
+
+In the harness, hands are always ordered:
+
+```text
+oldest → newest
+0   1   2   3   4
+                ↑
+             newest
+```
+
+So in a five-card hand, `card_index = 4` is the newest card.
+
+Our convention can therefore refer to **the newest card** without relying on an ambiguous implementation detail.
+
+---
+
+# The one-turn communication problem
+
+The core micro-experiment can be viewed as:
+
+```text
+Player 0 sees Player 1's hand
+             ↓
+chooses exactly one legal hint
+             ↓
+hint changes Player 1's knowledge
+             ↓
+Player 1 interprets the hint
+             ↓
+Player 1 chooses a play
+```
+
+Later we will freeze this setup and manipulate only what the players know about the convention.
+
+---
+
+# Section 2 takeaway
+
+> **Hanabi lets us separate the true card from what the receiver can actually infer about that card.**
+
+That separation gives us the controlled setting we need for studying conventions, partner knowledge, and reliable communication.
+
+---
 # Working plan
 
 We will build this presentation one section at a time.
@@ -317,4 +503,4 @@ For each section:
 3. Review and simplify the story.
 4. Commit the updated Markdown file.
 
-Next section to write: **2. Hanabi basics for this project**.
+Next section to write: **3. The experimental CK ladder**.
