@@ -269,6 +269,52 @@ uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_gpt_5_4_raw_self_derived_intervention.yaml
 ```
 
+The intervention can also be decomposed into a four-arm factorial ablation:
+
+```yaml
+sender_intervention_arms:
+  - fresh
+  - mechanical
+  - epistemic
+  - both
+```
+
+The arms are:
+
+```text
+fresh       original raw action prompt again; no probe facts
+mechanical  feed back only the model's mechanical-probe output
+epistemic   feed back only the model's epistemic-probe output
+both        feed back both self-derived outputs
+```
+
+`fresh` is the critical second-attempt control. With
+`vary_api_seed: false`, its request payload should hash identically to the
+baseline action request; any improvement there is therefore attributable to
+another sample from the same prompt rather than added information. The other
+arms differ only by which self-derived facts are appended.
+
+Per-condition summaries report convention-hint rate, condition-specific policy
+accuracy, baseline-to-arm transitions, baseline-failure rescue rate, and rescue
+rate restricted to trials where both probes were correct. They also report each
+arm's request-hash match rate against baseline. Within-condition paired
+comparisons across intervention arms are written to
+`paired_sender_intervention_arm_comparisons_by_condition`.
+
+Run the 14-call factorial smoke test:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_factorial_intervention_smoke.yaml
+```
+
+The matched 20-pair factorial experiment uses 280 calls total:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_factorial_intervention.yaml
+```
+
 A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
 requires persistent per-agent belief/memory state rather than only a different
 single-turn rendering.
