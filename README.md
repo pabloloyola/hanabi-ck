@@ -227,6 +227,48 @@ uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_gpt_5_4_raw_combined_probe.yaml
 ```
 
+A causal follow-up can feed the model's **own two probe outputs** back into a
+fresh action decision:
+
+```yaml
+sender_self_derived_intervention: true
+```
+
+The baseline action is still sampled first. The two independent shadow probes
+then run unchanged. Only after that does a fresh sender call receive the original
+raw action prompt plus:
+
+```text
+SELF-DERIVED FACTS FROM INDEPENDENT SHADOW PROBES
+  mechanical_hint_effects: ...
+  epistemic_facts:
+    convention_hint_index: ...
+    receiver_convention_knowledge: ...
+```
+
+The intervention does not substitute researcher truth for the model's answers:
+if a probe is wrong, the wrong self-derived fact is what gets fed back. This
+tests whether making the model's own elicitable facts jointly available at
+decision time rescues the CK2 robust policy.
+
+The aggregate report includes baseline-to-intervention transition counts,
+intervention policy accuracy, rescue rate among baseline failures, and rescue
+rate specifically among cases where both shadow probes were correct.
+
+Run the eight-call smoke test:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_self_derived_intervention_smoke.yaml
+```
+
+The matched 20-pair intervention experiment uses 160 calls total:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_self_derived_intervention.yaml
+```
+
 A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
 requires persistent per-agent belief/memory state rather than only a different
 single-turn rendering.
