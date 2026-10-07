@@ -203,6 +203,30 @@ def test_llm_prompt_states_base_safety_and_hand_order():
     assert '"output_example"' not in user
 
 
+def test_raw_llm_prompt_omits_derived_safety_annotations():
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+    legal = game.legal_actions(0)
+
+    agent = OpenAICompatibleAgent(
+        name="raw",
+        model="test-model",
+        mechanical_scaffold="raw",
+    )
+    messages = agent._prompt(observation, legal, "NO EXTRA CONVENTION")
+    system = messages[0]["content"]
+    user = messages[1]["content"]
+
+    assert "provably_playable_indices" not in system
+    assert "provably_playable_indices" not in user
+    assert "provably_obsolete_indices" not in user
+    assert '"play_safety"' not in user
+    assert '"own_knowledge"' in user
+    assert "derive for yourself" in system.lower()
+
+
 def test_intention_probe_payload_constrains_candidate_card_indices():
     from hanabi_ck.agents import OpenAICompatibleAgent
 
