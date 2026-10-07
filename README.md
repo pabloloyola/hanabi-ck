@@ -292,7 +292,9 @@ both        feed back both self-derived outputs
 `vary_api_seed: false`, its request payload should hash identically to the
 baseline action request; any improvement there is therefore attributable to
 another sample from the same prompt rather than added information. The other
-arms differ only by which self-derived facts are appended.
+arms differ only by which self-derived facts are appended. Arm execution order
+is deterministically shuffled per repetition/condition and logged, so provider
+or temporal drift is not confounded with a fixed arm order.
 
 Per-condition summaries report convention-hint rate, condition-specific policy
 accuracy, baseline-to-arm transitions, baseline-failure rescue rate, and rescue
