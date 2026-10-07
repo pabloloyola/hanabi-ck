@@ -827,6 +827,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "config_path": str(config_path),
         "scenario": scenario.name,
         "scenario_description": scenario.description,
+        "mechanical_scaffold": mechanical_scaffold,
         "acting_player": scenario.acting_player,
         "target_action": scenario.target_action.to_dict(),
         "diagnostic_safe_card_indices": list(
