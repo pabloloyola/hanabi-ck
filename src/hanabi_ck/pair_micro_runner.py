@@ -547,7 +547,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     scenario.sender_observation,
                     sender_condition_instruction,
                     scenario.sender_goal,
-                    sender_hint_effects,
+                    sender_hint_effects_for_prompt,
                 )
                 sender_probe_valid = (
                     probe_decision.parse_error is None
@@ -599,6 +599,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "scenario_description": scenario.description,
                     "condition": condition_name,
                     "condition_wording_variant": condition_wording_variant,
+                    "mechanical_scaffold": mechanical_scaffold,
                     "repetition": repetition,
                     "condition_order": condition_order,
                     "condition_order_index": condition_order_index,
@@ -651,6 +652,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         action.to_dict() for action in sender_actions
                     ],
                     "sender_hint_effects": sender_hint_effects,
+                    "sender_hint_effects_prompt": sender_hint_effects_for_prompt,
                     "sender_model_action_index": sender_decision.action_index,
                     "sender_action": sender_action.to_dict(),
                     "sender_hint_label": _hint_label(sender_action),
@@ -826,6 +828,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     action.to_dict() for action in sender_actions
                 ],
                 "sender_hint_effects": sender_hint_effects,
+                "sender_hint_effects_prompt": sender_hint_effects_for_prompt,
                 "sender_model_action_index": sender_decision.action_index,
                 "sender_action": sender_action.to_dict(),
                 "sender_hint_label": _hint_label(sender_action),
