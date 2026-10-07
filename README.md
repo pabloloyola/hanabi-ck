@@ -92,6 +92,59 @@ CK treatment / agents / logging
 CK0/CK1/CK2/CK3/CK∞ remain experimental prompt treatments above the game
 backend; they are not implemented inside HLE.
 
+## Mechanical scaffolds
+
+LLM prompts now expose mechanical support as a separate experimental axis from
+the CK treatment.
+
+The default is:
+
+```yaml
+mechanical_scaffold: derived
+```
+
+`derived` preserves the historical hanabi-ck prompt used for the existing
+results. It includes the deterministic
+`provably_playable_indices`, `provably_obsolete_indices`, and `play_safety`
+summaries. In the sender-reliance micro diagnostic it also includes the
+precomputed touched-card and post-hint safety annotations.
+
+The new ablation is:
+
+```yaml
+mechanical_scaffold: raw
+```
+
+`raw` removes those synthetic safety summaries from the LLM prompt. It still
+includes backend-normalized public card-knowledge constraints
+(`own_knowledge` / `public_knowledge`) produced by legal Hanabi hints, so
+"raw" means **no hanabi-ck safety derivation**, not an absence of all mechanical
+state tracking. In the pair diagnostic, raw also withholds precomputed
+`touched_indices` and post-hint safety effects from the sender.
+
+This gives the experimental separation:
+
+```text
+game backend
+    |
+mechanical scaffold: raw vs derived
+    |
+CK treatment: CK0 / CK1 / CK2 / CK3 / CK∞
+    |
+LLM policy
+```
+
+A two-call GPT-5.4 plumbing smoke test is available at:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_smoke.yaml
+```
+
+A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
+requires persistent per-agent belief/memory state rather than only a different
+single-turn rendering.
+
 ## Run a local LLM (LM Studio / OpenAI-compatible API)
 
 Start an OpenAI-compatible server, then:
