@@ -807,6 +807,9 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
     sender_intervention_seed_offset = int(
         cfg.get("sender_intervention_seed_offset", 4_000_000)
     )
+    sender_intervention_order_seed = int(
+        cfg.get("sender_intervention_order_seed", 4_500_000)
+    )
     if (
         any(
             arm in {"epistemic", "both"}
@@ -1250,8 +1253,14 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "mechanical": 2,
                 "epistemic": 3,
             }
+            sender_intervention_order = list(sender_intervention_arms)
+            random.Random(
+                sender_intervention_order_seed
+                + repetition * max(1, len(conditions))
+                + condition_order_index
+            ).shuffle(sender_intervention_order)
 
-            for intervention_arm in sender_intervention_arms:
+            for intervention_arm in sender_intervention_order:
                 arm_result: dict[str, Any] = {
                     "enabled": True,
                     "valid": False,
@@ -1489,6 +1498,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         sender_self_derived_intervention
                     ),
                     "sender_intervention_arms": sender_intervention_arms,
+                    "sender_intervention_order": sender_intervention_order,
                     "sender_interventions": sender_interventions,
                     "sender_intervention_seed": sender_intervention_seed,
                     "sender_intervention_instruction_hash": (
@@ -1754,6 +1764,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     sender_self_derived_intervention
                 ),
                 "sender_intervention_arms": sender_intervention_arms,
+                "sender_intervention_order": sender_intervention_order,
                 "sender_interventions": sender_interventions,
                 "sender_intervention_seed": sender_intervention_seed,
                 "sender_intervention_instruction_hash": (
@@ -2150,6 +2161,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ),
         "sender_intervention_arms": sender_intervention_arms,
         "sender_intervention_seed_offset": sender_intervention_seed_offset,
+        "sender_intervention_order_seed": sender_intervention_order_seed,
         "aggregate_by_condition": aggregate_by_condition,
         "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
         "paired_sender_convention_hint_vs_baseline": _comparisons_vs_baseline(
