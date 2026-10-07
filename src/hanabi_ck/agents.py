@@ -44,6 +44,15 @@ class SenderEpistemicProbeDecision:
     parse_error: str | None = None
 
 
+@dataclass
+class SenderMechanicalProbeDecision:
+    hint_effects: list[dict[str, Any]] | None
+    raw_response: str | None = None
+    response_channel: str | None = None
+    api_response: dict[str, Any] | None = None
+    parse_error: str | None = None
+
+
 class Agent(Protocol):
     name: str
 
@@ -59,6 +68,251 @@ class RandomAgent:
     def __init__(self, name: str, seed: int = 0):
         self.name = name
         self.rng = random.Random(seed)
+
+    def _sender_mechanical_probe_prompt(
+        self,
+        observation: PlayerObservation,
+        candidate_hints: list[dict[str, Any]],
+    ) -> list[dict[str, str]]:
+        system = """You are a stateless shadow mechanical-reasoning probe for a Hanabi experiment.
+Do not choose the sender's actual game action. Ignore any experimental convention
+or social-epistemic interpretation. Solve only ordinary Hanabi mechanics from the
+player-visible state.
+
+For each indexed candidate hint:
+1. Compute exactly which receiver card indices the hint touches.
+2. Apply the positive and negative information from that hint to the receiver's
+   public card knowledge.
+3. From the resulting card-identity constraints and the public stacks, compute
+   every receiver card index that is provably playable immediately after the hint.
+
+Return ONLY JSON with exactly:
+{"hint_effects": [
+  {
+    "action_index": N,
+    "touched_indices": [..],
+    "receiver_provably_playable_indices_after_hint": [..]
+  }
+]}
+
+Include exactly one hint_effects entry for each supplied candidate hint. Sort card
+indices in ascending order. Do not explain your answer."""
+        user = {
+            "observation": render_observation(
+                observation,
+                self.mechanical_scaffold,
+            ),
+            "candidate_hints": candidate_hints,
+        }
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+        ]
+
+    def _sender_mechanical_probe_payload(
+        self,
+        observation: PlayerObservation,
+        candidate_hints: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        candidate_indices = [
+            int(item["action_index"])
+            for item in candidate_hints
+        ]
+        if not candidate_indices:
+            raise ValueError("candidate_hints must be non-empty")
+        if len(set(candidate_indices)) != len(candidate_indices):
+            raise ValueError("candidate_hints action_index values must be unique")
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": self._sender_mechanical_probe_prompt(
+                observation,
+                candidate_hints,
+            ),
+        }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
+        if self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
+
+        if self.structured_output:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "hanabi_sender_mechanical_probe",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "hint_effects": {
+                                "type": "array",
+                                "minItems": len(candidate_indices),
+                                "maxItems": len(candidate_indices),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "action_index": {
+                                            "type": "integer",
+                                            "enum": candidate_indices,
+                                        },
+                                        "touched_indices": {
+                                            "type": "array",
+                                            "items": {"type": "integer"},
+                                        },
+                                        "receiver_provably_playable_indices_after_hint": {
+                                            "type": "array",
+                                            "items": {"type": "integer"},
+                                        },
+                                    },
+                                    "required": [
+                                        "action_index",
+                                        "touched_indices",
+                                        "receiver_provably_playable_indices_after_hint",
+                                    ],
+                                    "additionalProperties": False,
+                                },
+                            }
+                        },
+                        "required": ["hint_effects"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+
+        reserved = {
+            "model",
+            "messages",
+            "temperature",
+            "max_tokens",
+            "response_format",
+        }
+        collisions = reserved.intersection(self.extra_body)
+        if collisions:
+            names = ", ".join(sorted(collisions))
+            raise ValueError(
+                f"extra_body cannot override reserved request fields: {names}"
+            )
+
+        payload.update(self.extra_body)
+        return payload
+
+    def probe_sender_mechanics(
+        self,
+        observation: PlayerObservation,
+        candidate_hints: list[dict[str, Any]],
+    ) -> SenderMechanicalProbeDecision:
+        raw = ""
+        data: dict[str, Any] | None = None
+        try:
+            payload = self._sender_mechanical_probe_payload(
+                observation,
+                candidate_hints,
+            )
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            with httpx.Client(timeout=self.timeout_s) as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            _raise_if_truncated(data)
+            message = data["choices"][0]["message"]
+            raw, response_channel = _select_response_text(message)
+            parsed = _extract_json_object(raw)
+
+            if set(parsed) != {"hint_effects"}:
+                raise ValueError(
+                    "Mechanical probe response must contain exactly hint_effects"
+                )
+            effects = parsed["hint_effects"]
+            if not isinstance(effects, list):
+                raise ValueError("hint_effects must be an array")
+
+            expected_indices = {
+                int(item["action_index"])
+                for item in candidate_hints
+            }
+            if len(effects) != len(expected_indices):
+                raise ValueError(
+                    "Mechanical probe must return exactly one entry per candidate"
+                )
+
+            normalized: list[dict[str, Any]] = []
+            seen: set[int] = set()
+            required = {
+                "action_index",
+                "touched_indices",
+                "receiver_provably_playable_indices_after_hint",
+            }
+            for effect in effects:
+                if not isinstance(effect, dict) or set(effect) != required:
+                    raise ValueError(
+                        "Each mechanical effect must contain exactly "
+                        "action_index, touched_indices, and "
+                        "receiver_provably_playable_indices_after_hint"
+                    )
+                action_index = effect["action_index"]
+                if isinstance(action_index, bool) or not isinstance(
+                    action_index,
+                    int,
+                ):
+                    raise ValueError("action_index must be an integer")
+                if action_index not in expected_indices or action_index in seen:
+                    raise ValueError(
+                        f"Unexpected or duplicate action_index {action_index}"
+                    )
+                seen.add(action_index)
+
+                normalized_effect = {"action_index": action_index}
+                for field in (
+                    "touched_indices",
+                    "receiver_provably_playable_indices_after_hint",
+                ):
+                    values = effect[field]
+                    if (
+                        not isinstance(values, list)
+                        or any(
+                            isinstance(value, bool)
+                            or not isinstance(value, int)
+                            or value < 0
+                            for value in values
+                        )
+                    ):
+                        raise ValueError(
+                            f"{field} must be an array of non-negative integers"
+                        )
+                    if len(set(values)) != len(values):
+                        raise ValueError(f"{field} must not contain duplicates")
+                    normalized_effect[field] = sorted(values)
+                normalized.append(normalized_effect)
+
+            if seen != expected_indices:
+                raise ValueError(
+                    "Mechanical probe did not cover every candidate action_index"
+                )
+            normalized.sort(key=lambda item: item["action_index"])
+
+            return SenderMechanicalProbeDecision(
+                hint_effects=normalized,
+                raw_response=raw,
+                response_channel=response_channel,
+                api_response=data,
+            )
+        except Exception as exc:
+            return SenderMechanicalProbeDecision(
+                hint_effects=None,
+                raw_response=raw or None,
+                response_channel=(
+                    response_channel
+                    if "response_channel" in locals()
+                    else None
+                ),
+                api_response=data,
+                parse_error=f"{type(exc).__name__}: {exc}",
+            )
 
     def act(
         self,
