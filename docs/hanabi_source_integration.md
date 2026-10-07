@@ -199,7 +199,13 @@ Additional Phase-B diagnostics:
   both probes and feed back the model's own structured mechanical and epistemic
   answers. Researcher truth is never substituted for a probe answer. This tests
   whether jointly surfacing the model's elicitable facts at decision time
-  rescues the CK2 robust policy.
+  rescues the CK2 robust policy;
+- the intervention now supports a four-arm factorial ablation:
+  `fresh` (same raw prompt again), `mechanical` (mechanical probe only),
+  `epistemic` (epistemic probe only), and `both`. The fresh arm controls for
+  a second model sample without extra information; with API seed variation off,
+  its request payload should hash identically to the baseline request. Arm
+  execution order is deterministically randomized and logged.
 
 Planned:
 
