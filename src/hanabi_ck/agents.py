@@ -11,6 +11,7 @@ import httpx
 
 from .actions import Action
 from .observations import PlayerObservation
+from .scaffolds import normalize_mechanical_scaffold, render_observation
 
 
 @dataclass
@@ -349,6 +350,7 @@ class OpenAICompatibleAgent:
         max_tokens: int | None = None,
         extra_body: dict[str, Any] | None = None,
         structured_output: bool = False,
+        mechanical_scaffold: str = "derived",
     ):
         self.name = name
         self.model = model
@@ -382,6 +384,9 @@ class OpenAICompatibleAgent:
         self.max_tokens = max_tokens
         self.extra_body = dict(extra_body or {})
         self.structured_output = structured_output
+        self.mechanical_scaffold = normalize_mechanical_scaffold(
+            mechanical_scaffold
+        )
 
     def _prompt(
         self,
@@ -389,7 +394,8 @@ class OpenAICompatibleAgent:
         legal_actions: list[Action],
         private_instruction: str,
     ) -> list[dict[str, str]]:
-        system = """You are a Hanabi-playing research agent.
+        if self.mechanical_scaffold == "derived":
+            system = """You are a Hanabi-playing research agent.
 Choose exactly one action from the indexed legal_actions list.
 
 BASE HANABI SEMANTICS:
@@ -412,9 +418,33 @@ BASE HANABI SEMANTICS:
 The public_knowledge field records hint-derived knowledge visible to all players.
 Never infer hidden state from the research setup.
 Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
+        else:
+            system = """You are a Hanabi-playing research agent.
+Choose exactly one action from the indexed legal_actions list.
+
+BASE HANABI SEMANTICS:
+- Your own cards are hidden. Use own_knowledge; never infer hidden cards from researcher state.
+- A play succeeds only when rank == stacks[color] + 1.
+- If rank <= stacks[color], that card is already obsolete and playing it is a misplay.
+- A normal hint reveals information; it is not automatically a command to play.
+- own_knowledge and public_knowledge record mechanically valid constraints implied
+  by public Hanabi hints. Derive for yourself whether a card is currently safe to
+  play or already obsolete from those constraints and the public stacks.
+- An experimental convention can tell you which card is intended, but intention
+  does not make an unsafe card safe.
+- If you cannot justify a play from your visible information, prefer a legal hint
+  or discard rather than an unjustified play.
+- hand_order is oldest_to_newest. newest_card_index gives the newest current slot
+  for every player.
+
+Never infer hidden state from the research setup.
+Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
         user = {
             "private_experimental_instruction": private_instruction,
-            "observation": observation.to_dict(),
+            "observation": render_observation(
+                observation,
+                self.mechanical_scaffold,
+            ),
             "legal_actions": [
                 {
                     "action_index": index,
@@ -501,7 +531,10 @@ Use only the supplied observation, public history, and experimental instruction.
 Return ONLY JSON of the form {"intended_card_index": N}."""
         user = {
             "private_experimental_instruction": private_instruction,
-            "observation": observation.to_dict(),
+            "observation": render_observation(
+                observation,
+                self.mechanical_scaffold,
+            ),
             "trigger_hint": trigger_hint,
             "candidate_card_indices": candidate_card_indices,
         }
@@ -662,7 +695,10 @@ Return ONLY JSON with exactly:
  "receiver_convention_knowledge": "no_convention|unknown|known"}."""
         user = {
             "private_experimental_instruction": private_instruction,
-            "observation": observation.to_dict(),
+            "observation": render_observation(
+                observation,
+                self.mechanical_scaffold,
+            ),
             "communication_goal": sender_goal,
             "indexed_hint_effects": hint_effects,
         }
