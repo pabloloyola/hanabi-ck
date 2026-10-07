@@ -258,6 +258,54 @@ def test_intention_probe_payload_constrains_candidate_card_indices():
     assert "legal_actions" not in payload["messages"][1]["content"]
 
 
+def test_sender_mechanical_probe_payload_is_mechanics_only():
+    import json
+
+    from hanabi_ck.agents import OpenAICompatibleAgent
+
+    game = HanabiGame(num_players=2, seed=0)
+    observation = game.observe(0)
+    agent = OpenAICompatibleAgent(
+        name="raw-mechanical-probe",
+        model="test-model",
+        structured_output=True,
+        mechanical_scaffold="raw",
+    )
+    candidate_hints = [
+        {
+            "action_index": 1,
+            "action": Action.hint(1, "rank", 1).to_dict(),
+        },
+        {
+            "action_index": 4,
+            "action": Action.hint(1, "rank", 2).to_dict(),
+        },
+    ]
+
+    payload = agent._sender_mechanical_probe_payload(
+        observation,
+        candidate_hints,
+    )
+    schema = payload["response_format"]["json_schema"]["schema"]
+    user = json.loads(payload["messages"][1]["content"])
+
+    assert schema["required"] == ["hint_effects"]
+    assert schema["additionalProperties"] is False
+    item = schema["properties"]["hint_effects"]["items"]
+    assert item["properties"]["action_index"]["enum"] == [1, 4]
+    assert set(item["required"]) == {
+        "action_index",
+        "touched_indices",
+        "receiver_provably_playable_indices_after_hint",
+    }
+
+    assert user["candidate_hints"] == candidate_hints
+    assert "private_experimental_instruction" not in user
+    assert "communication_goal" not in user
+    assert "provably_playable_indices" not in user["observation"]
+    assert "play_safety" not in user["observation"]
+
+
 def test_sender_epistemic_probe_payload_constrains_hint_and_knowledge():
     from hanabi_ck.agents import OpenAICompatibleAgent
 
