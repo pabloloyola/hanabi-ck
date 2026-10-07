@@ -115,6 +115,16 @@ def main() -> None:
                             "paired_sender_probe_request_hash_comparisons"
                         ]
                     ),
+                    "paired_sender_mechanical_probe_exact_comparisons": (
+                        summary[
+                            "paired_sender_mechanical_probe_exact_comparisons"
+                        ]
+                    ),
+                    "paired_sender_mechanical_probe_request_hash_comparisons": (
+                        summary[
+                            "paired_sender_mechanical_probe_request_hash_comparisons"
+                        ]
+                    ),
                     "paired_sender_request_hash_comparisons": (
                         summary["paired_sender_request_hash_comparisons"]
                     ),
