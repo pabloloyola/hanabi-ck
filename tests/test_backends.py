@@ -25,11 +25,11 @@ def test_backend_factory_defaults_are_explicit():
         create_backend("not-a-backend", num_players=2, seed=0)
 
 
-def _hle_or_skip(seed: int = 0):
+def _hle_or_skip(seed: int = 0, num_players: int = 2):
     from hanabi_ck.backends.hle import HLEHanabiBackend
 
     try:
-        return HLEHanabiBackend(num_players=2, seed=seed)
+        return HLEHanabiBackend(num_players=num_players, seed=seed)
     except RuntimeError as exc:
         pytest.skip(str(exc))
 
@@ -54,7 +54,7 @@ def test_hle_backend_initial_observation_is_hidden_and_structured():
 
 def _mirror_hle_initial_state_into_native(hle, *, seed: int):
     """Build a native state with the same dealt hands."""
-    native = NativeHanabiBackend(num_players=2, seed=seed)
+    native = NativeHanabiBackend(num_players=hle.num_players, seed=seed)
     truth = hle.true_state()
 
     native.hands = [
@@ -260,14 +260,25 @@ def test_hle_and_native_match_life_exhaustion():
     assert native.true_state()["life_tokens"] == 0
 
 
-@pytest.mark.parametrize("seed", [0, 1, 7])
-def test_hle_and_native_match_full_simple_agent_trajectory(seed):
-    hle = _hle_or_skip(seed=seed)
+@pytest.mark.parametrize(
+    ("num_players", "seed"),
+    [
+        (2, 0),
+        (2, 1),
+        (2, 7),
+        (3, 0),
+        (4, 0),
+        (5, 0),
+    ],
+)
+def test_hle_and_native_match_full_simple_agent_trajectory(num_players, seed):
+    hle = _hle_or_skip(seed=seed, num_players=num_players)
     native = _mirror_hle_initial_state_into_native(hle, seed=seed)
     agent = SimpleAgent(name="parity_simple")
 
     turns = 0
     saw_final_round = False
+    saw_rank5_token_recovery = False
 
     while not hle.done:
         _assert_backend_state_parity(hle, native)
@@ -288,13 +299,36 @@ def test_hle_and_native_match_full_simple_agent_trajectory(seed):
             hle_result.outcome["life_tokens_after"]
             == native_result.outcome["life_tokens_after"]
         )
+        assert (
+            hle_result.outcome["information_tokens_after"]
+            == native_result.outcome["information_tokens_after"]
+        )
+
+        card = hle_result.outcome.get("card")
+        if (
+            decision.action.type == "play"
+            and hle_result.outcome.get("play_success") is True
+            and card is not None
+            and card["rank"] == 5
+            and hle_result.outcome["information_tokens_before"] < 8
+        ):
+            assert (
+                hle_result.outcome["information_tokens_after"]
+                == hle_result.outcome["information_tokens_before"] + 1
+            )
+            saw_rank5_token_recovery = True
 
         saw_final_round = saw_final_round or (
             hle.true_state()["final_turns_remaining"] is not None
         )
         turns += 1
-        assert turns < 200
+        assert turns < 250
 
     _assert_backend_state_parity(hle, native)
     assert saw_final_round
     assert hle.true_state()["final_turns_remaining"] == 0
+
+    # Seed 0 in the 2-player parity trajectory exercises the completed-stack
+    # rule: a successful rank-5 play restores one information token.
+    if num_players == 2 and seed == 0:
+        assert saw_rank5_token_recovery
