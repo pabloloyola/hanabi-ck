@@ -180,11 +180,51 @@ uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_gpt_5_4_raw_mechanical_probe_smoke.yaml
 ```
 
-The matched 20-pair diagnostic is:
+The matched 20-pair mechanical diagnostic is:
 
 ```bash
 uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_gpt_5_4_raw_mechanical_probe.yaml
+```
+
+To classify failures more sharply, both shadow probes can be enabled together.
+The sender action is still sampled first. Then two independent stateless calls
+measure:
+
+```text
+mechanical probe:
+  can the model reconstruct the hint consequences?
+
+epistemic probe:
+  can the model identify the convention hint and whether receiver knowledge
+  of that convention is established?
+```
+
+The aggregate report then classifies valid joint-probe samples hierarchically:
+
+```text
+mechanics_wrong
+mechanics_correct_epistemics_wrong
+both_probes_correct_action_wrong
+both_probes_correct_action_correct
+```
+
+The strongest policy-integration failure is
+`both_probes_correct_action_wrong`: both isolated capabilities are present,
+but the sampled game action still violates the condition-specific robust policy.
+
+Run the six-call plumbing smoke test:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_combined_probe_smoke.yaml
+```
+
+The matched 20-pair combined diagnostic uses 120 calls total:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_combined_probe.yaml
 ```
 
 A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
