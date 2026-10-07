@@ -1,6 +1,7 @@
 from hanabi_ck.actions import Action
 from hanabi_ck.pair_micro_runner import (
     _expected_receiver_convention_knowledge,
+    _self_derived_intervention_instruction,
     aggregate_pair_samples,
 )
 
@@ -343,3 +344,116 @@ def test_pair_aggregation_classifies_joint_probe_policy_failures():
         "mechanics_correct_epistemics_wrong": 1,
         "mechanics_wrong": 1,
     }
+
+
+
+def test_self_derived_intervention_instruction_uses_probe_outputs_only():
+    import json
+
+    base = "CK CONDITION\n\nDIAGNOSTIC COMMUNICATION GOAL:\nplay newest"
+    mechanical = [
+        {
+            "action_index": 2,
+            "touched_indices": [0, 3],
+            "receiver_provably_playable_indices_after_hint": [4],
+        },
+        {
+            "action_index": 7,
+            "touched_indices": [1, 2, 4],
+            "receiver_provably_playable_indices_after_hint": [1, 2, 4],
+        },
+    ]
+
+    rendered = _self_derived_intervention_instruction(
+        base,
+        mechanical_effects=mechanical,
+        convention_hint_index=7,
+        receiver_convention_knowledge="unknown",
+    )
+
+    assert rendered.startswith(base)
+    payload_text = rendered.split(
+        "SELF-DERIVED FACTS FROM INDEPENDENT SHADOW PROBES:\n",
+        1,
+    )[1]
+    payload_text = payload_text.split("\n", 1)[1]
+    payload = json.loads(payload_text)
+    assert payload["mechanical_hint_effects"] == mechanical
+    assert payload["epistemic_facts"] == {
+        "convention_hint_index": 7,
+        "receiver_convention_knowledge": "unknown",
+    }
+    assert "expected" not in payload_text.lower()
+    assert "robust_hint" not in payload_text
+
+
+def test_pair_aggregation_reports_self_derived_intervention_rescue():
+    samples = [
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+                sender_hint_label="rank=2",
+            ),
+            "sender_epistemic_choice_correct": False,
+            "sender_joint_mechanics_epistemics_correct": True,
+            "sender_intervention_enabled": True,
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": False,
+            "sender_intervention_epistemic_choice_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+                sender_hint_label="rank=2",
+            ),
+            "sender_epistemic_choice_correct": False,
+            "sender_joint_mechanics_epistemics_correct": True,
+            "sender_intervention_enabled": True,
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": True,
+            "sender_intervention_epistemic_choice_correct": False,
+        },
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_epistemic_choice_correct": True,
+            "sender_joint_mechanics_epistemics_correct": True,
+            "sender_intervention_enabled": True,
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": False,
+            "sender_intervention_epistemic_choice_correct": True,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+
+    assert result["sender_intervention_valid_count"] == 3
+    assert result["sender_intervention_error_count"] == 0
+    assert result["sender_intervention_convention_hint_rate"] == 1 / 3
+    assert result["sender_intervention_epistemic_choice_accuracy"] == 2 / 3
+    assert result["sender_baseline_intervention_choice_transition_counts"] == {
+        "baseline_correct_intervention_correct": 1,
+        "baseline_wrong_intervention_correct": 1,
+        "baseline_wrong_intervention_wrong": 1,
+    }
+    assert result["sender_baseline_wrong_intervention_rescue_rate"] == 0.5
+    assert (
+        result[
+            "sender_joint_correct_baseline_wrong_intervention_rescue_rate"
+        ]
+        == 0.5
+    )
