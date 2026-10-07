@@ -239,3 +239,107 @@ def test_pair_aggregation_separates_mechanical_reasoning_from_policy():
     assert result["sender_mechanical_probe_convention_effect_accuracy"] == 0.5
     assert result["sender_choice_accuracy_given_exact_mechanics"] == 0.0
     assert result["sender_mechanics_correct_but_choice_wrong_rate"] == 1.0
+
+
+
+def test_pair_aggregation_classifies_joint_probe_policy_failures():
+    samples = [
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+                sender_hint_label="rank=2",
+            ),
+            "sender_used_robust_hint": False,
+            "sender_epistemic_choice_correct": False,
+            "sender_probe_enabled": True,
+            "sender_probe_valid": True,
+            "sender_probe_mapping_correct": True,
+            "sender_probe_partner_knowledge_correct": True,
+            "sender_mechanical_probe_enabled": True,
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": True,
+            "sender_mechanical_probe_robust_effect_correct": True,
+            "sender_mechanical_probe_convention_effect_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_used_robust_hint": True,
+            "sender_epistemic_choice_correct": True,
+            "sender_probe_enabled": True,
+            "sender_probe_valid": True,
+            "sender_probe_mapping_correct": False,
+            "sender_probe_partner_knowledge_correct": True,
+            "sender_mechanical_probe_enabled": True,
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": True,
+            "sender_mechanical_probe_robust_effect_correct": True,
+            "sender_mechanical_probe_convention_effect_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_used_robust_hint": True,
+            "sender_epistemic_choice_correct": True,
+            "sender_probe_enabled": True,
+            "sender_probe_valid": True,
+            "sender_probe_mapping_correct": True,
+            "sender_probe_partner_knowledge_correct": True,
+            "sender_mechanical_probe_enabled": True,
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": False,
+            "sender_mechanical_probe_robust_effect_correct": True,
+            "sender_mechanical_probe_convention_effect_correct": False,
+        },
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_used_robust_hint": True,
+            "sender_epistemic_choice_correct": True,
+            "sender_probe_enabled": True,
+            "sender_probe_valid": True,
+            "sender_probe_mapping_correct": True,
+            "sender_probe_partner_knowledge_correct": True,
+            "sender_mechanical_probe_enabled": True,
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": True,
+            "sender_mechanical_probe_robust_effect_correct": True,
+            "sender_mechanical_probe_convention_effect_correct": True,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+
+    assert result["sender_joint_probe_valid_count"] == 4
+    assert result["sender_joint_probe_error_count"] == 0
+    assert result["sender_joint_mechanics_epistemics_accuracy"] == 0.5
+    assert result["sender_choice_accuracy_given_joint_probe_correct"] == 0.5
+    assert result["sender_both_probes_correct_but_choice_wrong_rate"] == 0.5
+    assert result["sender_failure_classification_counts"] == {
+        "both_probes_correct_action_correct": 1,
+        "both_probes_correct_action_wrong": 1,
+        "mechanics_correct_epistemics_wrong": 1,
+        "mechanics_wrong": 1,
+    }
