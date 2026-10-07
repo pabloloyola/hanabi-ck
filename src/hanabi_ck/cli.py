@@ -125,6 +125,16 @@ def main() -> None:
                             "paired_sender_mechanical_probe_request_hash_comparisons"
                         ]
                     ),
+                    "paired_sender_intervention_convention_hint_comparisons": (
+                        summary[
+                            "paired_sender_intervention_convention_hint_comparisons"
+                        ]
+                    ),
+                    "paired_sender_intervention_epistemic_choice_comparisons": (
+                        summary[
+                            "paired_sender_intervention_epistemic_choice_comparisons"
+                        ]
+                    ),
                     "paired_sender_request_hash_comparisons": (
                         summary["paired_sender_request_hash_comparisons"]
                     ),
