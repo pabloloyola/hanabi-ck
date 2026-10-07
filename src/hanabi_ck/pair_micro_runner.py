@@ -831,6 +831,42 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         sender_condition_instruction
                     ),
                     "sender_request_payload_hash": sender_request_hash,
+                    "sender_mechanical_probe_enabled": sender_mechanical_probe,
+                    "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
+                    "sender_mechanical_probe_request_payload_hash": (
+                        sender_mechanical_probe_request_hash
+                    ),
+                    "sender_mechanical_probe_valid": sender_mechanical_probe_valid,
+                    "sender_mechanical_probe_error": sender_mechanical_probe_error,
+                    "sender_mechanical_probe_candidates": mechanical_probe_candidates,
+                    "sender_mechanical_probe_expected_effects": (
+                        mechanical_probe_expected_effects
+                    ),
+                    "sender_mechanical_probe_effects": (
+                        sender_mechanical_probe_effects
+                    ),
+                    "sender_mechanical_probe_exact_correct": (
+                        sender_mechanical_probe_exact_correct
+                    ),
+                    "sender_mechanical_probe_robust_effect_correct": (
+                        sender_mechanical_probe_robust_effect_correct
+                    ),
+                    "sender_mechanical_probe_convention_effect_correct": (
+                        sender_mechanical_probe_convention_effect_correct
+                    ),
+                    "sender_mechanical_probe_response_channel": (
+                        sender_mechanical_probe_response_channel
+                    ),
+                    "sender_mechanical_probe_raw_response": (
+                        sender_mechanical_probe_raw_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "sender_mechanical_probe_api_response": (
+                        sender_mechanical_probe_api_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
                     "sender_probe_enabled": sender_probe,
                     "sender_probe_seed": sender_probe_seed,
                     "sender_probe_request_payload_hash": (
@@ -1007,6 +1043,42 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "sender_request_payload_hash": sender_request_hash,
                 "receiver_request_payload_hash": receiver_request_hash,
+                "sender_mechanical_probe_enabled": sender_mechanical_probe,
+                "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
+                "sender_mechanical_probe_request_payload_hash": (
+                    sender_mechanical_probe_request_hash
+                ),
+                "sender_mechanical_probe_valid": sender_mechanical_probe_valid,
+                "sender_mechanical_probe_error": sender_mechanical_probe_error,
+                "sender_mechanical_probe_candidates": mechanical_probe_candidates,
+                "sender_mechanical_probe_expected_effects": (
+                    mechanical_probe_expected_effects
+                ),
+                "sender_mechanical_probe_effects": (
+                    sender_mechanical_probe_effects
+                ),
+                "sender_mechanical_probe_exact_correct": (
+                    sender_mechanical_probe_exact_correct
+                ),
+                "sender_mechanical_probe_robust_effect_correct": (
+                    sender_mechanical_probe_robust_effect_correct
+                ),
+                "sender_mechanical_probe_convention_effect_correct": (
+                    sender_mechanical_probe_convention_effect_correct
+                ),
+                "sender_mechanical_probe_response_channel": (
+                    sender_mechanical_probe_response_channel
+                ),
+                "sender_mechanical_probe_raw_response": (
+                    sender_mechanical_probe_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_mechanical_probe_api_response": (
+                    sender_mechanical_probe_api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
                 "sender_probe_enabled": sender_probe,
                 "sender_probe_seed": sender_probe_seed,
                 "sender_probe_request_payload_hash": (
@@ -1198,6 +1270,26 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         if sender_probe
         else {}
     )
+    sender_mechanical_probe_exact_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_mechanical_probe_exact_correct",
+            valid_field="sender_mechanical_probe_valid",
+        )
+        if sender_mechanical_probe
+        else {}
+    )
+    sender_mechanical_probe_request_hash_pairwise = (
+        _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="sender_mechanical_probe_request_payload_hash",
+            valid_field="sender_mechanical_probe_valid",
+        )
+        if sender_mechanical_probe
+        else {}
+    )
     sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
         all_samples,
         conditions,
@@ -1227,6 +1319,10 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "sender_only": sender_only,
         "sender_shadow_probe": sender_probe,
         "sender_probe_seed_offset": sender_probe_seed_offset,
+        "sender_shadow_mechanical_probe": sender_mechanical_probe,
+        "sender_mechanical_probe_seed_offset": (
+            sender_mechanical_probe_seed_offset
+        ),
         "aggregate_by_condition": aggregate_by_condition,
         "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
         "paired_sender_convention_hint_vs_baseline": _comparisons_vs_baseline(
@@ -1269,6 +1365,12 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ),
         "paired_sender_probe_request_hash_comparisons": (
             sender_probe_request_hash_pairwise
+        ),
+        "paired_sender_mechanical_probe_exact_comparisons": (
+            sender_mechanical_probe_exact_pairwise
+        ),
+        "paired_sender_mechanical_probe_request_hash_comparisons": (
+            sender_mechanical_probe_request_hash_pairwise
         ),
         "paired_sender_request_hash_comparisons": (
             sender_request_hash_pairwise
