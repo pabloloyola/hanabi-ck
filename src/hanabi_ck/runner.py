@@ -13,6 +13,7 @@ from .backends import BACKEND_NAMES, create_backend
 from .conditions import DEFAULT_CONVENTION, get_condition
 from .logging import JsonlLogger
 from .metrics import aggregate_games, summarize_game
+from .scaffolds import normalize_mechanical_scaffold
 
 
 ERROR_POLICIES = {"abort", "safe_baseline"}
@@ -48,6 +49,9 @@ def _build_agent(spec: dict[str, Any], *, seed: int):
             ),
             extra_body=dict(spec.get("extra_body") or {}),
             structured_output=bool(spec.get("structured_output", False)),
+            mechanical_scaffold=normalize_mechanical_scaffold(
+                spec.get("mechanical_scaffold", "derived")
+            ),
         )
     raise ValueError(f"Unknown agent type: {typ}")
 
@@ -109,13 +113,19 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
             f"backend must be one of {sorted(BACKEND_NAMES)}"
         )
 
+    mechanical_scaffold = normalize_mechanical_scaffold(
+        cfg.get("mechanical_scaffold", "derived")
+    )
+
     error_policy = str(cfg.get("agent_error_policy", "abort"))
     if error_policy not in ERROR_POLICIES:
         raise ValueError(
             f"agent_error_policy must be one of {sorted(ERROR_POLICIES)}"
         )
 
-    agent_specs = list(cfg["agents"])
+    agent_specs = [dict(spec) for spec in cfg["agents"]]
+    for spec in agent_specs:
+        spec.setdefault("mechanical_scaffold", mechanical_scaffold)
     if len(agent_specs) != num_players:
         raise ValueError("Number of agent specs must equal num_players")
 
@@ -178,6 +188,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                             "event_kind": "agent_error",
                             "experiment": experiment,
                             "backend": backend_name,
+                            "mechanical_scaffold": mechanical_scaffold,
                             "condition": condition_name,
                             "condition_description": condition.description,
                             "seed": seed,
@@ -242,6 +253,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     "event_kind": "turn",
                     "experiment": experiment,
                     "backend": backend_name,
+                    "mechanical_scaffold": mechanical_scaffold,
                     "condition": condition_name,
                     "condition_description": condition.description,
                     "seed": seed,
@@ -297,6 +309,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     "condition": condition_name,
                     "seed": seed,
                     "backend": backend_name,
+                    "mechanical_scaffold": mechanical_scaffold,
                     "valid": not aborted,
                     "aborted": aborted,
                     "abort_reason": abort_reason,
@@ -321,6 +334,7 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
         "config_path": str(config_path),
         "num_players": num_players,
         "backend": backend_name,
+        "mechanical_scaffold": mechanical_scaffold,
         "seeds": seeds,
         "conditions": conditions,
         "agent_error_policy": error_policy,
