@@ -87,6 +87,13 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "sender_probe_partner_knowledge_counts": {},
             "sender_probe_knowledge_to_action_gap": None,
             "sender_action_matches_probe_hint_rate": None,
+            "sender_mechanical_probe_valid_count": 0,
+            "sender_mechanical_probe_error_count": 0,
+            "sender_mechanical_probe_exact_accuracy": None,
+            "sender_mechanical_probe_robust_effect_accuracy": None,
+            "sender_mechanical_probe_convention_effect_accuracy": None,
+            "sender_choice_accuracy_given_exact_mechanics": None,
+            "sender_mechanics_correct_but_choice_wrong_rate": None,
         }
 
     sender_trigger_count = sum(
@@ -166,6 +173,36 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     probe_action_match_denominator = sum(
         sample.get("sender_probe_convention_hint_index") != -1
         for sample in probe_valid
+    )
+
+    mechanical_probe_valid = [
+        sample for sample in valid
+        if sample.get("sender_mechanical_probe_valid") is True
+    ]
+    mechanical_probe_enabled = [
+        sample for sample in valid
+        if sample.get("sender_mechanical_probe_enabled")
+    ]
+    mechanical_exact_count = sum(
+        bool(sample.get("sender_mechanical_probe_exact_correct"))
+        for sample in mechanical_probe_valid
+    )
+    mechanical_robust_correct_count = sum(
+        bool(sample.get("sender_mechanical_probe_robust_effect_correct"))
+        for sample in mechanical_probe_valid
+    )
+    mechanical_convention_correct_count = sum(
+        bool(sample.get("sender_mechanical_probe_convention_effect_correct"))
+        for sample in mechanical_probe_valid
+    )
+    exact_mechanics_with_choice = [
+        sample for sample in mechanical_probe_valid
+        if sample.get("sender_mechanical_probe_exact_correct") is True
+        and sample.get("sender_epistemic_choice_correct") is not None
+    ]
+    exact_mechanics_choice_correct_count = sum(
+        bool(sample.get("sender_epistemic_choice_correct"))
+        for sample in exact_mechanics_with_choice
     )
 
     return {
@@ -284,6 +321,36 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             if probe_action_match_denominator
             else None
         ),
+        "sender_mechanical_probe_valid_count": len(mechanical_probe_valid),
+        "sender_mechanical_probe_error_count": (
+            len(mechanical_probe_enabled) - len(mechanical_probe_valid)
+        ),
+        "sender_mechanical_probe_exact_accuracy": (
+            mechanical_exact_count / len(mechanical_probe_valid)
+            if mechanical_probe_valid
+            else None
+        ),
+        "sender_mechanical_probe_robust_effect_accuracy": (
+            mechanical_robust_correct_count / len(mechanical_probe_valid)
+            if mechanical_probe_valid
+            else None
+        ),
+        "sender_mechanical_probe_convention_effect_accuracy": (
+            mechanical_convention_correct_count / len(mechanical_probe_valid)
+            if mechanical_probe_valid
+            else None
+        ),
+        "sender_choice_accuracy_given_exact_mechanics": (
+            exact_mechanics_choice_correct_count / len(exact_mechanics_with_choice)
+            if exact_mechanics_with_choice
+            else None
+        ),
+        "sender_mechanics_correct_but_choice_wrong_rate": (
+            1.0
+            - exact_mechanics_choice_correct_count / len(exact_mechanics_with_choice)
+            if exact_mechanics_with_choice
+            else None
+        ),
     }
 
 
@@ -353,6 +420,17 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
     sender_probe_seed_offset = int(
         cfg.get("sender_probe_seed_offset", 2_000_000)
     )
+    sender_mechanical_probe = bool(
+        cfg.get("sender_shadow_mechanical_probe", False)
+    )
+    sender_mechanical_probe_seed_offset = int(
+        cfg.get("sender_mechanical_probe_seed_offset", 3_000_000)
+    )
+    if sender_mechanical_probe and not scenario.epistemic_reliance_test:
+        raise ValueError(
+            "sender_shadow_mechanical_probe currently requires an "
+            "epistemic-reliance scenario"
+        )
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
     sender_action_order_seed = int(
@@ -417,6 +495,44 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         sender_convention_hint_index = sender_actions.index(
             scenario.convention_trigger_hint
         )
+
+        mechanical_probe_candidates: list[dict[str, Any]] = []
+        mechanical_probe_expected_effects: list[dict[str, Any]] = []
+        robust_hint_index: int | None = None
+        if sender_mechanical_probe:
+            assert scenario.robust_hint is not None
+            robust_hint_index = sender_actions.index(scenario.robust_hint)
+            diagnostic_indices = [
+                robust_hint_index,
+                sender_convention_hint_index,
+            ]
+            effects_by_index = {
+                int(effect["action_index"]): effect
+                for effect in sender_hint_effects
+            }
+            for action_index in diagnostic_indices:
+                effect = effects_by_index[action_index]
+                mechanical_probe_candidates.append(
+                    {
+                        "action_index": action_index,
+                        "action": dict(effect["action"]),
+                    }
+                )
+                mechanical_probe_expected_effects.append(
+                    {
+                        "action_index": action_index,
+                        "touched_indices": sorted(
+                            int(index)
+                            for index in effect["touched_indices"]
+                        ),
+                        "receiver_provably_playable_indices_after_hint": sorted(
+                            int(index)
+                            for index in effect[
+                                "receiver_provably_playable_indices_after_hint"
+                            ]
+                        ),
+                    }
+                )
 
         for condition_order_index, condition_name in enumerate(condition_order):
             condition = get_condition(condition_name)
@@ -488,6 +604,18 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 else None
             )
 
+            sender_mechanical_probe_seed: int | None = None
+            sender_mechanical_probe_request_hash: str | None = None
+            sender_mechanical_probe_valid = False
+            sender_mechanical_probe_error: str | None = None
+            sender_mechanical_probe_effects: list[dict[str, Any]] | None = None
+            sender_mechanical_probe_exact_correct: bool | None = None
+            sender_mechanical_probe_robust_effect_correct: bool | None = None
+            sender_mechanical_probe_convention_effect_correct: bool | None = None
+            sender_mechanical_probe_raw_response: str | None = None
+            sender_mechanical_probe_response_channel: str | None = None
+            sender_mechanical_probe_api_response: dict[str, Any] | None = None
+
             if sender_action is None:
                 record = {
                     "event_kind": "micro_pair_sample",
@@ -506,6 +634,100 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 logger.write(record)
                 all_samples.append(record)
                 continue
+
+            if sender_mechanical_probe:
+                sender_mechanical_probe_seed = (
+                    sender_mechanical_probe_seed_offset + sender_seed
+                )
+                sender_mechanical_probe_spec = _agent_spec_for_sample(
+                    sender_spec_base,
+                    sample_seed=sender_mechanical_probe_seed,
+                    vary_api_seed=vary_api_seed,
+                )
+                sender_mechanical_probe_agent = _build_agent(
+                    sender_mechanical_probe_spec,
+                    seed=sender_mechanical_probe_seed,
+                )
+                if not isinstance(
+                    sender_mechanical_probe_agent,
+                    OpenAICompatibleAgent,
+                ):
+                    raise RuntimeError(
+                        "sender mechanical shadow probe requires "
+                        "OpenAICompatibleAgent"
+                    )
+
+                sender_mechanical_probe_request_hash = _payload_hash(
+                    sender_mechanical_probe_agent._sender_mechanical_probe_payload(
+                        scenario.sender_observation,
+                        mechanical_probe_candidates,
+                    )
+                )
+                mechanical_probe_decision = (
+                    sender_mechanical_probe_agent.probe_sender_mechanics(
+                        scenario.sender_observation,
+                        mechanical_probe_candidates,
+                    )
+                )
+                sender_mechanical_probe_valid = (
+                    mechanical_probe_decision.parse_error is None
+                    and mechanical_probe_decision.hint_effects is not None
+                )
+                sender_mechanical_probe_error = (
+                    mechanical_probe_decision.parse_error
+                )
+                sender_mechanical_probe_effects = (
+                    mechanical_probe_decision.hint_effects
+                )
+                sender_mechanical_probe_raw_response = (
+                    mechanical_probe_decision.raw_response
+                )
+                sender_mechanical_probe_response_channel = (
+                    mechanical_probe_decision.response_channel
+                )
+                sender_mechanical_probe_api_response = (
+                    mechanical_probe_decision.api_response
+                )
+
+                if sender_mechanical_probe_valid:
+                    assert sender_mechanical_probe_effects is not None
+                    expected_by_index = {
+                        int(effect["action_index"]): effect
+                        for effect in mechanical_probe_expected_effects
+                    }
+                    observed_by_index = {
+                        int(effect["action_index"]): effect
+                        for effect in sender_mechanical_probe_effects
+                    }
+
+                    def _mechanical_effect_matches(action_index: int) -> bool:
+                        expected = expected_by_index[action_index]
+                        observed = observed_by_index.get(action_index)
+                        return (
+                            observed is not None
+                            and observed["touched_indices"]
+                            == expected["touched_indices"]
+                            and observed[
+                                "receiver_provably_playable_indices_after_hint"
+                            ]
+                            == expected[
+                                "receiver_provably_playable_indices_after_hint"
+                            ]
+                        )
+
+                    assert robust_hint_index is not None
+                    sender_mechanical_probe_robust_effect_correct = (
+                        _mechanical_effect_matches(robust_hint_index)
+                    )
+                    sender_mechanical_probe_convention_effect_correct = (
+                        _mechanical_effect_matches(
+                            sender_convention_hint_index
+                        )
+                    )
+                    sender_mechanical_probe_exact_correct = (
+                        sender_mechanical_probe_robust_effect_correct
+                        and sender_mechanical_probe_convention_effect_correct
+                    )
 
             sender_probe_seed: int | None = None
             sender_probe_request_hash: str | None = None
