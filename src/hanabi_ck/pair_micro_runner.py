@@ -94,6 +94,12 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "sender_mechanical_probe_convention_effect_accuracy": None,
             "sender_choice_accuracy_given_exact_mechanics": None,
             "sender_mechanics_correct_but_choice_wrong_rate": None,
+            "sender_joint_probe_valid_count": 0,
+            "sender_joint_probe_error_count": 0,
+            "sender_joint_mechanics_epistemics_accuracy": None,
+            "sender_choice_accuracy_given_joint_probe_correct": None,
+            "sender_both_probes_correct_but_choice_wrong_rate": None,
+            "sender_failure_classification_counts": {},
         }
 
     sender_trigger_count = sum(
@@ -204,6 +210,52 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         bool(sample.get("sender_epistemic_choice_correct"))
         for sample in exact_mechanics_with_choice
     )
+
+    joint_probe_valid = [
+        sample for sample in valid
+        if sample.get("sender_probe_valid") is True
+        and sample.get("sender_mechanical_probe_valid") is True
+    ]
+    joint_probe_enabled = [
+        sample for sample in valid
+        if sample.get("sender_probe_enabled")
+        and sample.get("sender_mechanical_probe_enabled")
+    ]
+    joint_correct = [
+        sample for sample in joint_probe_valid
+        if sample.get("sender_mechanical_probe_exact_correct") is True
+        and sample.get("sender_probe_mapping_correct") is True
+        and sample.get("sender_probe_partner_knowledge_correct") is True
+    ]
+    joint_correct_with_choice = [
+        sample for sample in joint_correct
+        if sample.get("sender_epistemic_choice_correct") is not None
+    ]
+    joint_correct_choice_correct_count = sum(
+        bool(sample.get("sender_epistemic_choice_correct"))
+        for sample in joint_correct_with_choice
+    )
+
+    failure_classification_counts: Counter[str] = Counter()
+    for sample in joint_probe_valid:
+        mechanics_correct = (
+            sample.get("sender_mechanical_probe_exact_correct") is True
+        )
+        epistemics_correct = (
+            sample.get("sender_probe_mapping_correct") is True
+            and sample.get("sender_probe_partner_knowledge_correct") is True
+        )
+        action_correct = sample.get("sender_epistemic_choice_correct") is True
+
+        if not mechanics_correct:
+            label = "mechanics_wrong"
+        elif not epistemics_correct:
+            label = "mechanics_correct_epistemics_wrong"
+        elif action_correct:
+            label = "both_probes_correct_action_correct"
+        else:
+            label = "both_probes_correct_action_wrong"
+        failure_classification_counts[label] += 1
 
     return {
         "n_samples": len(samples),
@@ -350,6 +402,29 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             - exact_mechanics_choice_correct_count / len(exact_mechanics_with_choice)
             if exact_mechanics_with_choice
             else None
+        ),
+        "sender_joint_probe_valid_count": len(joint_probe_valid),
+        "sender_joint_probe_error_count": (
+            len(joint_probe_enabled) - len(joint_probe_valid)
+        ),
+        "sender_joint_mechanics_epistemics_accuracy": (
+            len(joint_correct) / len(joint_probe_valid)
+            if joint_probe_valid
+            else None
+        ),
+        "sender_choice_accuracy_given_joint_probe_correct": (
+            joint_correct_choice_correct_count / len(joint_correct_with_choice)
+            if joint_correct_with_choice
+            else None
+        ),
+        "sender_both_probes_correct_but_choice_wrong_rate": (
+            1.0
+            - joint_correct_choice_correct_count / len(joint_correct_with_choice)
+            if joint_correct_with_choice
+            else None
+        ),
+        "sender_failure_classification_counts": dict(
+            sorted(failure_classification_counts.items())
         ),
     }
 
@@ -813,6 +888,39 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 == expected_receiver_knowledge
             )
 
+            sender_epistemic_probe_exact_correct: bool | None = None
+            sender_joint_probe_valid = (
+                sender_probe_valid and sender_mechanical_probe_valid
+            )
+            sender_joint_mechanics_epistemics_correct: bool | None = None
+            sender_failure_classification: str | None = None
+
+            if sender_probe_valid:
+                sender_epistemic_probe_exact_correct = (
+                    sender_probe_mapping_correct
+                    and sender_probe_partner_knowledge_correct
+                )
+
+            if sender_joint_probe_valid:
+                sender_joint_mechanics_epistemics_correct = (
+                    sender_mechanical_probe_exact_correct is True
+                    and sender_epistemic_probe_exact_correct is True
+                )
+                if sender_mechanical_probe_exact_correct is not True:
+                    sender_failure_classification = "mechanics_wrong"
+                elif sender_epistemic_probe_exact_correct is not True:
+                    sender_failure_classification = (
+                        "mechanics_correct_epistemics_wrong"
+                    )
+                elif sender_epistemic_choice_correct is True:
+                    sender_failure_classification = (
+                        "both_probes_correct_action_correct"
+                    )
+                else:
+                    sender_failure_classification = (
+                        "both_probes_correct_action_wrong"
+                    )
+
             if sender_only:
                 record = {
                     "event_kind": "micro_pair_sample",
@@ -890,6 +998,16 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     ),
                     "sender_probe_partner_knowledge_correct": (
                         sender_probe_partner_knowledge_correct
+                    ),
+                    "sender_epistemic_probe_exact_correct": (
+                        sender_epistemic_probe_exact_correct
+                    ),
+                    "sender_joint_probe_valid": sender_joint_probe_valid,
+                    "sender_joint_mechanics_epistemics_correct": (
+                        sender_joint_mechanics_epistemics_correct
+                    ),
+                    "sender_failure_classification": (
+                        sender_failure_classification
                     ),
                     "sender_probe_response_channel": (
                         sender_probe_response_channel
@@ -1102,6 +1220,16 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "sender_probe_partner_knowledge_correct": (
                     sender_probe_partner_knowledge_correct
+                ),
+                "sender_epistemic_probe_exact_correct": (
+                    sender_epistemic_probe_exact_correct
+                ),
+                "sender_joint_probe_valid": sender_joint_probe_valid,
+                "sender_joint_mechanics_epistemics_correct": (
+                    sender_joint_mechanics_epistemics_correct
+                ),
+                "sender_failure_classification": (
+                    sender_failure_classification
                 ),
                 "sender_probe_response_channel": (
                     sender_probe_response_channel
