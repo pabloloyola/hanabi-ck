@@ -396,6 +396,13 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             )
             for sample in valid_arm
         )
+        request_hash_match_count = sum(
+            sample.get("sender_request_payload_hash")
+            == sample["sender_interventions"][arm].get(
+                "request_payload_hash"
+            )
+            for sample in valid_arm
+        )
         choice_arm = [
             sample for sample in valid_arm
             if sample["sender_interventions"][arm].get(
@@ -464,6 +471,12 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "convention_hint_count": convention_count,
             "convention_hint_rate": (
                 convention_count / len(valid_arm)
+                if valid_arm
+                else None
+            ),
+            "request_hash_matches_baseline_count": request_hash_match_count,
+            "request_hash_matches_baseline_rate": (
+                request_hash_match_count / len(valid_arm)
                 if valid_arm
                 else None
             ),
