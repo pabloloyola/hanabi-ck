@@ -190,3 +190,52 @@ def test_pair_aggregation_supports_sender_only_samples():
     assert result["receiver_newest_rate"] is None
     assert result["safe_coordination_success_rate"] is None
     assert result["convention_chain_success_rate"] is None
+
+
+def test_pair_aggregation_separates_mechanical_reasoning_from_policy():
+    samples = [
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+                sender_hint_label="rank=2",
+            ),
+            "sender_used_robust_hint": False,
+            "sender_epistemic_choice_correct": False,
+            "sender_mechanical_probe_enabled": True,
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": True,
+            "sender_mechanical_probe_robust_effect_correct": True,
+            "sender_mechanical_probe_convention_effect_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_used_robust_hint": True,
+            "sender_epistemic_choice_correct": True,
+            "sender_mechanical_probe_enabled": True,
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": False,
+            "sender_mechanical_probe_robust_effect_correct": True,
+            "sender_mechanical_probe_convention_effect_correct": False,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+
+    assert result["sender_mechanical_probe_valid_count"] == 2
+    assert result["sender_mechanical_probe_error_count"] == 0
+    assert result["sender_mechanical_probe_exact_accuracy"] == 0.5
+    assert result["sender_mechanical_probe_robust_effect_accuracy"] == 1.0
+    assert result["sender_mechanical_probe_convention_effect_accuracy"] == 0.5
+    assert result["sender_choice_accuracy_given_exact_mechanics"] == 0.0
+    assert result["sender_mechanics_correct_but_choice_wrong_rate"] == 1.0
