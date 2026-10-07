@@ -185,15 +185,21 @@ Implemented modes:
 - `derived`: the historical hanabi-ck prompt with those deterministic
   annotations included.
 
-Additional Phase-B diagnostic:
+Additional Phase-B diagnostics:
 
 - a stateless **sender mechanical shadow probe** can be enabled for the
   epistemic-reliance scenario. The sender action is sampled first; a fresh
   request then receives only the player-visible state and the robust/convention
   candidate hints, with no CK instruction or sender goal. It must reconstruct
-  touched cards and post-hint provably-playable indices. This distinguishes a
-  mechanical-reasoning failure from a policy-integration failure when the raw
-  scaffold produces the convention-dependent CK2 action.
+  touched cards and post-hint provably-playable indices;
+- the existing stateless **sender epistemic shadow probe** can be crossed with
+  the mechanical probe to classify failures as mechanical, epistemic, or
+  policy-integration failures;
+- a **self-derived facts intervention** can then make a fresh action call after
+  both probes and feed back the model's own structured mechanical and epistemic
+  answers. Researcher truth is never substituted for a probe answer. This tests
+  whether jointly surfacing the model's elicitable facts at decision time
+  rescues the CK2 robust policy.
 
 Planned:
 
