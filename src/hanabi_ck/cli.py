@@ -135,6 +135,11 @@ def main() -> None:
                             "paired_sender_intervention_epistemic_choice_comparisons"
                         ]
                     ),
+                    "paired_sender_intervention_arm_comparisons_by_condition": (
+                        summary[
+                            "paired_sender_intervention_arm_comparisons_by_condition"
+                        ]
+                    ),
                     "paired_sender_request_hash_comparisons": (
                         summary["paired_sender_request_hash_comparisons"]
                     ),
