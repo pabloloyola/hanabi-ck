@@ -24,6 +24,7 @@ sender_intervention_arms:
   - epistemic
   - both
 sender_intervention_seed_offset: 4000000
+sender_intervention_order_seed: 4500000
 vary_api_seed: false
 shuffle_legal_actions: true
 sender_action_order_seed: 20262001
