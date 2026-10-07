@@ -141,6 +141,52 @@ uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_gpt_5_4_raw_smoke.yaml
 ```
 
+The sender-reliance diagnostic also supports a **stateless mechanical shadow
+probe**:
+
+```yaml
+sender_shadow_mechanical_probe: true
+```
+
+The sender action is sampled first. A fresh request then receives the same
+player-visible raw state plus only the robust and convention candidate hints. It
+does **not** receive the CK instruction, sender goal, touched-card annotations,
+or ground-truth post-hint safety. It must infer for each candidate:
+
+```text
+touched_indices
+receiver_provably_playable_indices_after_hint
+```
+
+This separates two failure modes under the raw scaffold:
+
+```text
+mechanical probe wrong + CK2 convention hint
+    -> mechanical reasoning bottleneck
+
+mechanical probe exact + CK2 convention hint
+    -> mechanics were recognized, but policy/risk integration failed
+```
+
+The aggregate report includes exact mechanical-probe accuracy, robust/convention
+effect accuracy, and sender choice accuracy conditional on exact mechanics. The
+mechanical probe payload should hash identically across CK2 and CK3 within a
+paired repetition because it contains no CK treatment text.
+
+Run the four-call plumbing smoke test before scaling:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_mechanical_probe_smoke.yaml
+```
+
+The matched 20-pair diagnostic is:
+
+```bash
+uv run hanabi-ck micro-pair \
+  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_mechanical_probe.yaml
+```
+
 A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
 requires persistent per-agent belief/memory state rather than only a different
 single-turn rendering.
