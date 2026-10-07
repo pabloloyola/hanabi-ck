@@ -64,6 +64,31 @@ def _expected_receiver_convention_knowledge(condition: str) -> str:
         ) from exc
 
 
+def _self_derived_intervention_instruction(
+    sender_instruction: str,
+    *,
+    mechanical_effects: list[dict[str, Any]],
+    convention_hint_index: int,
+    receiver_convention_knowledge: str,
+) -> str:
+    """Append the model's own shadow-probe outputs to a fresh action prompt."""
+    self_derived = {
+        "mechanical_hint_effects": mechanical_effects,
+        "epistemic_facts": {
+            "convention_hint_index": convention_hint_index,
+            "receiver_convention_knowledge": receiver_convention_knowledge,
+        },
+    }
+    return (
+        sender_instruction
+        + "\n\nSELF-DERIVED FACTS FROM INDEPENDENT SHADOW PROBES:\n"
+        + "These are your own independently elicited derivations, not "
+        + "researcher ground truth. Use them together with the visible Hanabi "
+        + "state and the communication goal when selecting an action.\n"
+        + json.dumps(self_derived, ensure_ascii=False)
+    )
+
+
 def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     valid = [sample for sample in samples if sample["valid"]]
     if not valid:
@@ -100,6 +125,13 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "sender_choice_accuracy_given_joint_probe_correct": None,
             "sender_both_probes_correct_but_choice_wrong_rate": None,
             "sender_failure_classification_counts": {},
+            "sender_intervention_valid_count": 0,
+            "sender_intervention_error_count": 0,
+            "sender_intervention_convention_hint_rate": None,
+            "sender_intervention_epistemic_choice_accuracy": None,
+            "sender_baseline_intervention_choice_transition_counts": {},
+            "sender_baseline_wrong_intervention_rescue_rate": None,
+            "sender_joint_correct_baseline_wrong_intervention_rescue_rate": None,
         }
 
     sender_trigger_count = sum(
@@ -256,6 +288,65 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             label = "both_probes_correct_action_wrong"
         failure_classification_counts[label] += 1
+
+    intervention_enabled = [
+        sample for sample in valid
+        if sample.get("sender_intervention_enabled")
+    ]
+    intervention_valid = [
+        sample for sample in valid
+        if sample.get("sender_intervention_valid") is True
+    ]
+    intervention_convention_count = sum(
+        bool(sample.get("sender_intervention_used_convention_hint"))
+        for sample in intervention_valid
+    )
+    intervention_choice_samples = [
+        sample for sample in intervention_valid
+        if sample.get("sender_intervention_epistemic_choice_correct") is not None
+    ]
+    intervention_choice_correct_count = sum(
+        bool(sample.get("sender_intervention_epistemic_choice_correct"))
+        for sample in intervention_choice_samples
+    )
+
+    transition_counts: Counter[str] = Counter()
+    for sample in intervention_choice_samples:
+        baseline_correct = (
+            sample.get("sender_epistemic_choice_correct") is True
+        )
+        intervention_correct = (
+            sample.get("sender_intervention_epistemic_choice_correct") is True
+        )
+        transition_counts[
+            (
+                "baseline_correct_intervention_correct"
+                if baseline_correct and intervention_correct
+                else "baseline_correct_intervention_wrong"
+                if baseline_correct
+                else "baseline_wrong_intervention_correct"
+                if intervention_correct
+                else "baseline_wrong_intervention_wrong"
+            )
+        ] += 1
+
+    baseline_wrong_with_intervention = [
+        sample for sample in intervention_choice_samples
+        if sample.get("sender_epistemic_choice_correct") is False
+    ]
+    baseline_wrong_rescued_count = sum(
+        sample.get("sender_intervention_epistemic_choice_correct") is True
+        for sample in baseline_wrong_with_intervention
+    )
+    joint_correct_baseline_wrong = [
+        sample for sample in intervention_choice_samples
+        if sample.get("sender_joint_mechanics_epistemics_correct") is True
+        and sample.get("sender_epistemic_choice_correct") is False
+    ]
+    joint_correct_baseline_wrong_rescued_count = sum(
+        sample.get("sender_intervention_epistemic_choice_correct") is True
+        for sample in joint_correct_baseline_wrong
+    )
 
     return {
         "n_samples": len(samples),
@@ -426,6 +517,34 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "sender_failure_classification_counts": dict(
             sorted(failure_classification_counts.items())
         ),
+        "sender_intervention_valid_count": len(intervention_valid),
+        "sender_intervention_error_count": (
+            len(intervention_enabled) - len(intervention_valid)
+        ),
+        "sender_intervention_convention_hint_rate": (
+            intervention_convention_count / len(intervention_valid)
+            if intervention_valid
+            else None
+        ),
+        "sender_intervention_epistemic_choice_accuracy": (
+            intervention_choice_correct_count / len(intervention_choice_samples)
+            if intervention_choice_samples
+            else None
+        ),
+        "sender_baseline_intervention_choice_transition_counts": dict(
+            sorted(transition_counts.items())
+        ),
+        "sender_baseline_wrong_intervention_rescue_rate": (
+            baseline_wrong_rescued_count / len(baseline_wrong_with_intervention)
+            if baseline_wrong_with_intervention
+            else None
+        ),
+        "sender_joint_correct_baseline_wrong_intervention_rescue_rate": (
+            joint_correct_baseline_wrong_rescued_count
+            / len(joint_correct_baseline_wrong)
+            if joint_correct_baseline_wrong
+            else None
+        ),
     }
 
 
@@ -505,6 +624,19 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         raise ValueError(
             "sender_shadow_mechanical_probe currently requires an "
             "epistemic-reliance scenario"
+        )
+    sender_self_derived_intervention = bool(
+        cfg.get("sender_self_derived_intervention", False)
+    )
+    sender_intervention_seed_offset = int(
+        cfg.get("sender_intervention_seed_offset", 4_000_000)
+    )
+    if sender_self_derived_intervention and not (
+        sender_probe and sender_mechanical_probe
+    ):
+        raise ValueError(
+            "sender_self_derived_intervention requires both "
+            "sender_shadow_probe and sender_shadow_mechanical_probe"
         )
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
@@ -921,6 +1053,121 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         "both_probes_correct_action_wrong"
                     )
 
+            sender_intervention_seed: int | None = None
+            sender_intervention_request_payload_hash: str | None = None
+            sender_intervention_instruction_hash: str | None = None
+            sender_intervention_valid = False
+            sender_intervention_error: str | None = None
+            sender_intervention_model_action_index: int | None = None
+            sender_intervention_action: Action | None = None
+            sender_intervention_hint_label: str | None = None
+            sender_intervention_used_convention_hint: bool | None = None
+            sender_intervention_used_robust_hint: bool | None = None
+            sender_intervention_epistemic_choice_correct: bool | None = None
+            sender_intervention_raw_response: str | None = None
+            sender_intervention_response_channel: str | None = None
+            sender_intervention_api_response: dict[str, Any] | None = None
+
+            if sender_self_derived_intervention:
+                if not sender_joint_probe_valid:
+                    sender_intervention_error = "prerequisite_probe_invalid"
+                else:
+                    assert sender_mechanical_probe_effects is not None
+                    assert sender_probe_convention_hint_index is not None
+                    assert sender_probe_receiver_knowledge is not None
+
+                    intervention_instruction = (
+                        _self_derived_intervention_instruction(
+                            sender_instruction,
+                            mechanical_effects=sender_mechanical_probe_effects,
+                            convention_hint_index=(
+                                sender_probe_convention_hint_index
+                            ),
+                            receiver_convention_knowledge=(
+                                sender_probe_receiver_knowledge
+                            ),
+                        )
+                    )
+                    sender_intervention_instruction_hash = _hash_text(
+                        intervention_instruction
+                    )
+                    sender_intervention_seed = (
+                        sender_intervention_seed_offset + sender_seed
+                    )
+                    intervention_spec = _agent_spec_for_sample(
+                        sender_spec_base,
+                        sample_seed=sender_intervention_seed,
+                        vary_api_seed=vary_api_seed,
+                    )
+                    intervention_agent = _build_agent(
+                        intervention_spec,
+                        seed=sender_intervention_seed,
+                    )
+                    if not isinstance(
+                        intervention_agent,
+                        OpenAICompatibleAgent,
+                    ):
+                        raise RuntimeError(
+                            "sender self-derived intervention requires "
+                            "OpenAICompatibleAgent"
+                        )
+                    sender_intervention_request_payload_hash = _payload_hash(
+                        intervention_agent._request_payload(
+                            scenario.sender_observation,
+                            sender_actions,
+                            intervention_instruction,
+                        )
+                    )
+                    intervention_decision = intervention_agent.act(
+                        scenario.sender_observation,
+                        sender_actions,
+                        intervention_instruction,
+                    )
+                    (
+                        sender_intervention_action,
+                        _,
+                    ) = _resolve_agent_decision(
+                        intervention_decision,
+                        error_policy=error_policy,
+                        observation=scenario.sender_observation,
+                        legal_actions=sender_actions,
+                    )
+                    sender_intervention_error = intervention_decision.parse_error
+                    sender_intervention_raw_response = (
+                        intervention_decision.raw_response
+                    )
+                    sender_intervention_response_channel = (
+                        intervention_decision.response_channel
+                    )
+                    sender_intervention_api_response = (
+                        intervention_decision.api_response
+                    )
+                    sender_intervention_model_action_index = (
+                        intervention_decision.action_index
+                    )
+                    sender_intervention_valid = (
+                        sender_intervention_action is not None
+                        and intervention_decision.parse_error is None
+                    )
+                    if sender_intervention_action is not None:
+                        sender_intervention_hint_label = _hint_label(
+                            sender_intervention_action
+                        )
+                        sender_intervention_used_convention_hint = (
+                            sender_intervention_action
+                            == scenario.convention_trigger_hint
+                        )
+                        sender_intervention_used_robust_hint = (
+                            scenario.robust_hint is not None
+                            and sender_intervention_action
+                            == scenario.robust_hint
+                        )
+                        sender_intervention_epistemic_choice_correct = (
+                            sender_intervention_action == expected_sender_hint
+                            if expected_sender_hint is not None
+                            else None
+                        )
+
             if sender_only:
                 record = {
                     "event_kind": "micro_pair_sample",
@@ -939,6 +1186,51 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         sender_condition_instruction
                     ),
                     "sender_request_payload_hash": sender_request_hash,
+                    "sender_intervention_enabled": (
+                        sender_self_derived_intervention
+                    ),
+                    "sender_intervention_seed": sender_intervention_seed,
+                    "sender_intervention_instruction_hash": (
+                        sender_intervention_instruction_hash
+                    ),
+                    "sender_intervention_request_payload_hash": (
+                        sender_intervention_request_payload_hash
+                    ),
+                    "sender_intervention_valid": sender_intervention_valid,
+                    "sender_intervention_error": sender_intervention_error,
+                    "sender_intervention_model_action_index": (
+                        sender_intervention_model_action_index
+                    ),
+                    "sender_intervention_action": (
+                        sender_intervention_action.to_dict()
+                        if sender_intervention_action is not None
+                        else None
+                    ),
+                    "sender_intervention_hint_label": (
+                        sender_intervention_hint_label
+                    ),
+                    "sender_intervention_used_convention_hint": (
+                        sender_intervention_used_convention_hint
+                    ),
+                    "sender_intervention_used_robust_hint": (
+                        sender_intervention_used_robust_hint
+                    ),
+                    "sender_intervention_epistemic_choice_correct": (
+                        sender_intervention_epistemic_choice_correct
+                    ),
+                    "sender_intervention_response_channel": (
+                        sender_intervention_response_channel
+                    ),
+                    "sender_intervention_raw_response": (
+                        sender_intervention_raw_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
+                    "sender_intervention_api_response": (
+                        sender_intervention_api_response
+                        if cfg.get("log_raw_model_responses", True)
+                        else None
+                    ),
                     "sender_mechanical_probe_enabled": sender_mechanical_probe,
                     "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
                     "sender_mechanical_probe_request_payload_hash": (
@@ -1161,6 +1453,51 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "sender_request_payload_hash": sender_request_hash,
                 "receiver_request_payload_hash": receiver_request_hash,
+                "sender_intervention_enabled": (
+                    sender_self_derived_intervention
+                ),
+                "sender_intervention_seed": sender_intervention_seed,
+                "sender_intervention_instruction_hash": (
+                    sender_intervention_instruction_hash
+                ),
+                "sender_intervention_request_payload_hash": (
+                    sender_intervention_request_payload_hash
+                ),
+                "sender_intervention_valid": sender_intervention_valid,
+                "sender_intervention_error": sender_intervention_error,
+                "sender_intervention_model_action_index": (
+                    sender_intervention_model_action_index
+                ),
+                "sender_intervention_action": (
+                    sender_intervention_action.to_dict()
+                    if sender_intervention_action is not None
+                    else None
+                ),
+                "sender_intervention_hint_label": (
+                    sender_intervention_hint_label
+                ),
+                "sender_intervention_used_convention_hint": (
+                    sender_intervention_used_convention_hint
+                ),
+                "sender_intervention_used_robust_hint": (
+                    sender_intervention_used_robust_hint
+                ),
+                "sender_intervention_epistemic_choice_correct": (
+                    sender_intervention_epistemic_choice_correct
+                ),
+                "sender_intervention_response_channel": (
+                    sender_intervention_response_channel
+                ),
+                "sender_intervention_raw_response": (
+                    sender_intervention_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_intervention_api_response": (
+                    sender_intervention_api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
                 "sender_mechanical_probe_enabled": sender_mechanical_probe,
                 "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
                 "sender_mechanical_probe_request_payload_hash": (
@@ -1418,6 +1755,26 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         if sender_mechanical_probe
         else {}
     )
+    sender_intervention_convention_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_intervention_used_convention_hint",
+            valid_field="sender_intervention_valid",
+        )
+        if sender_self_derived_intervention
+        else {}
+    )
+    sender_intervention_choice_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_intervention_epistemic_choice_correct",
+            valid_field="sender_intervention_valid",
+        )
+        if sender_self_derived_intervention
+        else {}
+    )
     sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
         all_samples,
         conditions,
@@ -1451,6 +1808,10 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "sender_mechanical_probe_seed_offset": (
             sender_mechanical_probe_seed_offset
         ),
+        "sender_self_derived_intervention": (
+            sender_self_derived_intervention
+        ),
+        "sender_intervention_seed_offset": sender_intervention_seed_offset,
         "aggregate_by_condition": aggregate_by_condition,
         "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
         "paired_sender_convention_hint_vs_baseline": _comparisons_vs_baseline(
@@ -1499,6 +1860,12 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ),
         "paired_sender_mechanical_probe_request_hash_comparisons": (
             sender_mechanical_probe_request_hash_pairwise
+        ),
+        "paired_sender_intervention_convention_hint_comparisons": (
+            sender_intervention_convention_pairwise
+        ),
+        "paired_sender_intervention_epistemic_choice_comparisons": (
+            sender_intervention_choice_pairwise
         ),
         "paired_sender_request_hash_comparisons": (
             sender_request_hash_pairwise
