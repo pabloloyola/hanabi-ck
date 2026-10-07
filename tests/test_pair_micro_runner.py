@@ -457,3 +457,143 @@ def test_pair_aggregation_reports_self_derived_intervention_rescue():
         ]
         == 0.5
     )
+
+
+
+def test_intervention_instruction_factorial_arms():
+    base = "BASE"
+    mechanical = [
+        {
+            "action_index": 2,
+            "touched_indices": [0, 3],
+            "receiver_provably_playable_indices_after_hint": [4],
+        }
+    ]
+
+    fresh = _self_derived_intervention_instruction(
+        base,
+        arm="fresh",
+    )
+    mechanical_only = _self_derived_intervention_instruction(
+        base,
+        arm="mechanical",
+        mechanical_effects=mechanical,
+    )
+    epistemic_only = _self_derived_intervention_instruction(
+        base,
+        arm="epistemic",
+        convention_hint_index=7,
+        receiver_convention_knowledge="unknown",
+    )
+    both = _self_derived_intervention_instruction(
+        base,
+        arm="both",
+        mechanical_effects=mechanical,
+        convention_hint_index=7,
+        receiver_convention_knowledge="unknown",
+    )
+
+    assert fresh == base
+    assert "mechanical_hint_effects" in mechanical_only
+    assert "epistemic_facts" not in mechanical_only
+    assert "mechanical_hint_effects" not in epistemic_only
+    assert "epistemic_facts" in epistemic_only
+    assert "mechanical_hint_effects" in both
+    assert "epistemic_facts" in both
+
+
+def test_pair_aggregation_reports_factorial_intervention_arms():
+    samples = [
+        {
+            **_sample(
+                sender_trigger=True,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=True,
+                sender_hint_label="rank=2",
+            ),
+            "sender_epistemic_choice_correct": False,
+            "sender_joint_mechanics_epistemics_correct": True,
+            "sender_interventions": {
+                "fresh": {
+                    "valid": True,
+                    "used_convention_hint": True,
+                    "epistemic_choice_correct": False,
+                },
+                "mechanical": {
+                    "valid": True,
+                    "used_convention_hint": True,
+                    "epistemic_choice_correct": False,
+                },
+                "epistemic": {
+                    "valid": True,
+                    "used_convention_hint": False,
+                    "epistemic_choice_correct": True,
+                },
+                "both": {
+                    "valid": True,
+                    "used_convention_hint": False,
+                    "epistemic_choice_correct": True,
+                },
+            },
+            "sender_intervention_enabled": True,
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": False,
+            "sender_intervention_epistemic_choice_correct": True,
+        },
+        {
+            **_sample(
+                sender_trigger=False,
+                receiver_index=4,
+                receiver_safe=True,
+                safe_success=True,
+                chain_success=False,
+                sender_hint_label="rank=1",
+            ),
+            "sender_epistemic_choice_correct": True,
+            "sender_joint_mechanics_epistemics_correct": True,
+            "sender_interventions": {
+                "fresh": {
+                    "valid": True,
+                    "used_convention_hint": True,
+                    "epistemic_choice_correct": False,
+                },
+                "mechanical": {
+                    "valid": True,
+                    "used_convention_hint": False,
+                    "epistemic_choice_correct": True,
+                },
+                "epistemic": {
+                    "valid": True,
+                    "used_convention_hint": False,
+                    "epistemic_choice_correct": True,
+                },
+                "both": {
+                    "valid": True,
+                    "used_convention_hint": False,
+                    "epistemic_choice_correct": True,
+                },
+            },
+            "sender_intervention_enabled": True,
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": False,
+            "sender_intervention_epistemic_choice_correct": True,
+        },
+    ]
+
+    result = aggregate_pair_samples(samples)
+    arms = result["sender_intervention_by_arm"]
+
+    assert arms["fresh"]["epistemic_choice_accuracy"] == 0.0
+    assert arms["mechanical"]["epistemic_choice_accuracy"] == 0.5
+    assert arms["epistemic"]["epistemic_choice_accuracy"] == 1.0
+    assert arms["both"]["epistemic_choice_accuracy"] == 1.0
+    assert arms["fresh"]["baseline_wrong_intervention_rescue_rate"] == 0.0
+    assert arms["epistemic"]["baseline_wrong_intervention_rescue_rate"] == 1.0
+    assert (
+        arms["both"][
+            "joint_correct_baseline_wrong_intervention_rescue_rate"
+        ]
+        == 1.0
+    )
