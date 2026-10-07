@@ -64,21 +64,42 @@ def _expected_receiver_convention_knowledge(condition: str) -> str:
         ) from exc
 
 
+INTERVENTION_ARMS = ("fresh", "mechanical", "epistemic", "both")
+
+
 def _self_derived_intervention_instruction(
     sender_instruction: str,
     *,
-    mechanical_effects: list[dict[str, Any]],
-    convention_hint_index: int,
-    receiver_convention_knowledge: str,
+    mechanical_effects: list[dict[str, Any]] | None = None,
+    convention_hint_index: int | None = None,
+    receiver_convention_knowledge: str | None = None,
+    arm: str = "both",
 ) -> str:
-    """Append the model's own shadow-probe outputs to a fresh action prompt."""
-    self_derived = {
-        "mechanical_hint_effects": mechanical_effects,
-        "epistemic_facts": {
+    """Build a fresh action prompt for one intervention ablation arm."""
+    if arm not in INTERVENTION_ARMS:
+        raise ValueError(
+            f"Unknown intervention arm {arm!r}; expected one of "
+            f"{list(INTERVENTION_ARMS)}"
+        )
+    if arm == "fresh":
+        return sender_instruction
+
+    self_derived: dict[str, Any] = {}
+    if arm in {"mechanical", "both"}:
+        if mechanical_effects is None:
+            raise ValueError(f"{arm} intervention requires mechanical effects")
+        self_derived["mechanical_hint_effects"] = mechanical_effects
+    if arm in {"epistemic", "both"}:
+        if (
+            convention_hint_index is None
+            or receiver_convention_knowledge is None
+        ):
+            raise ValueError(f"{arm} intervention requires epistemic facts")
+        self_derived["epistemic_facts"] = {
             "convention_hint_index": convention_hint_index,
             "receiver_convention_knowledge": receiver_convention_knowledge,
-        },
-    }
+        }
+
     return (
         sender_instruction
         + "\n\nSELF-DERIVED FACTS FROM INDEPENDENT SHADOW PROBES:\n"
@@ -132,6 +153,7 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             "sender_baseline_intervention_choice_transition_counts": {},
             "sender_baseline_wrong_intervention_rescue_rate": None,
             "sender_joint_correct_baseline_wrong_intervention_rescue_rate": None,
+            "sender_intervention_by_arm": {},
         }
 
     sender_trigger_count = sum(
@@ -348,6 +370,126 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         for sample in joint_correct_baseline_wrong
     )
 
+    intervention_by_arm: dict[str, Any] = {}
+    observed_arms = [
+        arm
+        for arm in INTERVENTION_ARMS
+        if any(
+            arm in (sample.get("sender_interventions") or {})
+            for sample in valid
+        )
+    ]
+    for arm in observed_arms:
+        enabled_arm = [
+            sample for sample in valid
+            if arm in (sample.get("sender_interventions") or {})
+        ]
+        valid_arm = [
+            sample for sample in enabled_arm
+            if sample["sender_interventions"][arm].get("valid") is True
+        ]
+        convention_count = sum(
+            bool(
+                sample["sender_interventions"][arm].get(
+                    "used_convention_hint"
+                )
+            )
+            for sample in valid_arm
+        )
+        choice_arm = [
+            sample for sample in valid_arm
+            if sample["sender_interventions"][arm].get(
+                "epistemic_choice_correct"
+            ) is not None
+        ]
+        choice_correct_count = sum(
+            bool(
+                sample["sender_interventions"][arm].get(
+                    "epistemic_choice_correct"
+                )
+            )
+            for sample in choice_arm
+        )
+        transitions: Counter[str] = Counter()
+        for sample in choice_arm:
+            baseline_correct = (
+                sample.get("sender_epistemic_choice_correct") is True
+            )
+            arm_correct = (
+                sample["sender_interventions"][arm].get(
+                    "epistemic_choice_correct"
+                )
+                is True
+            )
+            transitions[
+                (
+                    "baseline_correct_intervention_correct"
+                    if baseline_correct and arm_correct
+                    else "baseline_correct_intervention_wrong"
+                    if baseline_correct
+                    else "baseline_wrong_intervention_correct"
+                    if arm_correct
+                    else "baseline_wrong_intervention_wrong"
+                )
+            ] += 1
+
+        baseline_wrong_arm = [
+            sample for sample in choice_arm
+            if sample.get("sender_epistemic_choice_correct") is False
+        ]
+        rescued_arm = sum(
+            sample["sender_interventions"][arm].get(
+                "epistemic_choice_correct"
+            )
+            is True
+            for sample in baseline_wrong_arm
+        )
+        joint_correct_baseline_wrong_arm = [
+            sample for sample in choice_arm
+            if sample.get("sender_joint_mechanics_epistemics_correct") is True
+            and sample.get("sender_epistemic_choice_correct") is False
+        ]
+        joint_rescued_arm = sum(
+            sample["sender_interventions"][arm].get(
+                "epistemic_choice_correct"
+            )
+            is True
+            for sample in joint_correct_baseline_wrong_arm
+        )
+
+        intervention_by_arm[arm] = {
+            "n_enabled": len(enabled_arm),
+            "n_valid": len(valid_arm),
+            "n_error": len(enabled_arm) - len(valid_arm),
+            "convention_hint_count": convention_count,
+            "convention_hint_rate": (
+                convention_count / len(valid_arm)
+                if valid_arm
+                else None
+            ),
+            "epistemic_choice_correct_count": (
+                choice_correct_count if choice_arm else None
+            ),
+            "epistemic_choice_accuracy": (
+                choice_correct_count / len(choice_arm)
+                if choice_arm
+                else None
+            ),
+            "baseline_intervention_choice_transition_counts": dict(
+                sorted(transitions.items())
+            ),
+            "baseline_wrong_intervention_rescue_rate": (
+                rescued_arm / len(baseline_wrong_arm)
+                if baseline_wrong_arm
+                else None
+            ),
+            "joint_correct_baseline_wrong_intervention_rescue_rate": (
+                joint_rescued_arm / len(joint_correct_baseline_wrong_arm)
+                if joint_correct_baseline_wrong_arm
+                else None
+            ),
+        }
+
     return {
         "n_samples": len(samples),
         "n_valid_samples": len(valid),
@@ -545,6 +687,7 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             if joint_correct_baseline_wrong
             else None
         ),
+        "sender_intervention_by_arm": intervention_by_arm,
     }
 
 
@@ -625,18 +768,52 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             "sender_shadow_mechanical_probe currently requires an "
             "epistemic-reliance scenario"
         )
-    sender_self_derived_intervention = bool(
-        cfg.get("sender_self_derived_intervention", False)
+    configured_intervention_arms = cfg.get("sender_intervention_arms")
+    if configured_intervention_arms is None:
+        sender_intervention_arms = (
+            ["both"]
+            if bool(cfg.get("sender_self_derived_intervention", False))
+            else []
+        )
+    else:
+        sender_intervention_arms = [
+            str(arm).strip().lower()
+            for arm in configured_intervention_arms
+        ]
+    if len(set(sender_intervention_arms)) != len(sender_intervention_arms):
+        raise ValueError("sender_intervention_arms must not contain duplicates")
+    unknown_intervention_arms = (
+        set(sender_intervention_arms) - set(INTERVENTION_ARMS)
     )
+    if unknown_intervention_arms:
+        raise ValueError(
+            "sender_intervention_arms contains unknown values: "
+            + ", ".join(sorted(unknown_intervention_arms))
+        )
+    sender_self_derived_intervention = bool(sender_intervention_arms)
     sender_intervention_seed_offset = int(
         cfg.get("sender_intervention_seed_offset", 4_000_000)
     )
-    if sender_self_derived_intervention and not (
-        sender_probe and sender_mechanical_probe
+    if (
+        any(
+            arm in {"epistemic", "both"}
+            for arm in sender_intervention_arms
+        )
+        and not sender_probe
     ):
         raise ValueError(
-            "sender_self_derived_intervention requires both "
-            "sender_shadow_probe and sender_shadow_mechanical_probe"
+            "epistemic/both intervention arms require sender_shadow_probe"
+        )
+    if (
+        any(
+            arm in {"mechanical", "both"}
+            for arm in sender_intervention_arms
+        )
+        and not sender_mechanical_probe
+    ):
+        raise ValueError(
+            "mechanical/both intervention arms require "
+            "sender_shadow_mechanical_probe"
         )
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
@@ -1053,65 +1230,101 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         "both_probes_correct_action_wrong"
                     )
 
-            sender_intervention_seed: int | None = None
-            sender_intervention_request_payload_hash: str | None = None
-            sender_intervention_instruction_hash: str | None = None
-            sender_intervention_valid = False
-            sender_intervention_error: str | None = None
-            sender_intervention_model_action_index: int | None = None
-            sender_intervention_action: Action | None = None
-            sender_intervention_hint_label: str | None = None
-            sender_intervention_used_convention_hint: bool | None = None
-            sender_intervention_used_robust_hint: bool | None = None
-            sender_intervention_epistemic_choice_correct: bool | None = None
-            sender_intervention_raw_response: str | None = None
-            sender_intervention_response_channel: str | None = None
-            sender_intervention_api_response: dict[str, Any] | None = None
+            sender_interventions: dict[str, dict[str, Any]] = {}
+            arm_seed_slot = {
+                "both": 0,
+                "fresh": 1,
+                "mechanical": 2,
+                "epistemic": 3,
+            }
 
-            if sender_self_derived_intervention:
-                if not sender_joint_probe_valid:
-                    sender_intervention_error = "prerequisite_probe_invalid"
-                else:
-                    assert sender_mechanical_probe_effects is not None
-                    assert sender_probe_convention_hint_index is not None
-                    assert sender_probe_receiver_knowledge is not None
+            for intervention_arm in sender_intervention_arms:
+                arm_result: dict[str, Any] = {
+                    "enabled": True,
+                    "valid": False,
+                    "error": None,
+                    "seed": None,
+                    "instruction_hash": None,
+                    "request_payload_hash": None,
+                    "model_action_index": None,
+                    "action": None,
+                    "hint_label": None,
+                    "used_convention_hint": None,
+                    "used_robust_hint": None,
+                    "epistemic_choice_correct": None,
+                    "response_channel": None,
+                    "raw_response": None,
+                    "api_response": None,
+                }
 
+                prerequisite_ok = True
+                if (
+                    intervention_arm in {"mechanical", "both"}
+                    and not sender_mechanical_probe_valid
+                ):
+                    prerequisite_ok = False
+                    arm_result["error"] = "mechanical_probe_invalid"
+                if (
+                    intervention_arm in {"epistemic", "both"}
+                    and not sender_probe_valid
+                ):
+                    prerequisite_ok = False
+                    arm_result["error"] = (
+                        "joint_probe_invalid"
+                        if intervention_arm == "both"
+                        else "epistemic_probe_invalid"
+                    )
+
+                if prerequisite_ok:
                     intervention_instruction = (
                         _self_derived_intervention_instruction(
                             sender_instruction,
-                            mechanical_effects=sender_mechanical_probe_effects,
+                            arm=intervention_arm,
+                            mechanical_effects=(
+                                sender_mechanical_probe_effects
+                                if intervention_arm in {"mechanical", "both"}
+                                else None
+                            ),
                             convention_hint_index=(
                                 sender_probe_convention_hint_index
+                                if intervention_arm in {"epistemic", "both"}
+                                else None
                             ),
                             receiver_convention_knowledge=(
                                 sender_probe_receiver_knowledge
+                                if intervention_arm in {"epistemic", "both"}
+                                else None
                             ),
                         )
                     )
-                    sender_intervention_instruction_hash = _hash_text(
+                    arm_result["instruction_hash"] = _hash_text(
                         intervention_instruction
                     )
-                    sender_intervention_seed = (
-                        sender_intervention_seed_offset + sender_seed
+                    arm_seed = (
+                        sender_intervention_seed_offset
+                        + arm_seed_slot[intervention_arm] * 1_000_000
+                        + sender_seed
                     )
+                    arm_result["seed"] = arm_seed
                     intervention_spec = _agent_spec_for_sample(
                         sender_spec_base,
-                        sample_seed=sender_intervention_seed,
+                        sample_seed=arm_seed,
                         vary_api_seed=vary_api_seed,
                     )
                     intervention_agent = _build_agent(
                         intervention_spec,
-                        seed=sender_intervention_seed,
+                        seed=arm_seed,
                     )
                     if not isinstance(
                         intervention_agent,
                         OpenAICompatibleAgent,
                     ):
                         raise RuntimeError(
-                            "sender self-derived intervention requires "
+                            "sender intervention requires "
                             "OpenAICompatibleAgent"
                         )
-                    sender_intervention_request_payload_hash = _payload_hash(
+
+                    arm_result["request_payload_hash"] = _payload_hash(
                         intervention_agent._request_payload(
                             scenario.sender_observation,
                             sender_actions,
@@ -1123,50 +1336,123 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         sender_actions,
                         intervention_instruction,
                     )
-                    (
-                        sender_intervention_action,
-                        _,
-                    ) = _resolve_agent_decision(
+                    intervention_action, _ = _resolve_agent_decision(
                         intervention_decision,
                         error_policy=error_policy,
                         observation=scenario.sender_observation,
                         legal_actions=sender_actions,
                     )
-                    sender_intervention_error = intervention_decision.parse_error
-                    sender_intervention_raw_response = (
+                    arm_result["error"] = intervention_decision.parse_error
+                    arm_result["raw_response"] = (
                         intervention_decision.raw_response
                     )
-                    sender_intervention_response_channel = (
+                    arm_result["response_channel"] = (
                         intervention_decision.response_channel
                     )
-                    sender_intervention_api_response = (
+                    arm_result["api_response"] = (
                         intervention_decision.api_response
                     )
-                    sender_intervention_model_action_index = (
+                    arm_result["model_action_index"] = (
                         intervention_decision.action_index
                     )
-                    sender_intervention_valid = (
-                        sender_intervention_action is not None
+                    arm_result["valid"] = (
+                        intervention_action is not None
                         and intervention_decision.parse_error is None
                     )
-                    if sender_intervention_action is not None:
-                        sender_intervention_hint_label = _hint_label(
-                            sender_intervention_action
+                    if intervention_action is not None:
+                        arm_result["action"] = intervention_action.to_dict()
+                        arm_result["hint_label"] = _hint_label(
+                            intervention_action
                         )
-                        sender_intervention_used_convention_hint = (
-                            sender_intervention_action
+                        arm_result["used_convention_hint"] = (
+                            intervention_action
                             == scenario.convention_trigger_hint
                         )
-                        sender_intervention_used_robust_hint = (
+                        arm_result["used_robust_hint"] = (
                             scenario.robust_hint is not None
-                            and sender_intervention_action
+                            and intervention_action
                             == scenario.robust_hint
                         )
-                        sender_intervention_epistemic_choice_correct = (
-                            sender_intervention_action == expected_sender_hint
+                        arm_result["epistemic_choice_correct"] = (
+                            intervention_action == expected_sender_hint
                             if expected_sender_hint is not None
                             else None
                         )
+
+                sender_interventions[intervention_arm] = arm_result
+
+            # Backward-compatible aliases: the historical intervention is
+            # exactly the "both" arm.
+            legacy_intervention = sender_interventions.get("both")
+            sender_intervention_seed = (
+                legacy_intervention.get("seed")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_request_payload_hash = (
+                legacy_intervention.get("request_payload_hash")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_instruction_hash = (
+                legacy_intervention.get("instruction_hash")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_valid = bool(
+                legacy_intervention
+                and legacy_intervention.get("valid")
+            )
+            sender_intervention_error = (
+                legacy_intervention.get("error")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_model_action_index = (
+                legacy_intervention.get("model_action_index")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_action = (
+                legacy_intervention.get("action")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_hint_label = (
+                legacy_intervention.get("hint_label")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_used_convention_hint = (
+                legacy_intervention.get("used_convention_hint")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_used_robust_hint = (
+                legacy_intervention.get("used_robust_hint")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_epistemic_choice_correct = (
+                legacy_intervention.get("epistemic_choice_correct")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_response_channel = (
+                legacy_intervention.get("response_channel")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_raw_response = (
+                legacy_intervention.get("raw_response")
+                if legacy_intervention is not None
+                else None
+            )
+            sender_intervention_api_response = (
+                legacy_intervention.get("api_response")
+                if legacy_intervention is not None
+                else None
+            )
 
             if sender_only:
                 record = {
@@ -1189,6 +1475,8 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "sender_intervention_enabled": (
                         sender_self_derived_intervention
                     ),
+                    "sender_intervention_arms": sender_intervention_arms,
+                    "sender_interventions": sender_interventions,
                     "sender_intervention_seed": sender_intervention_seed,
                     "sender_intervention_instruction_hash": (
                         sender_intervention_instruction_hash
@@ -1201,11 +1489,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "sender_intervention_model_action_index": (
                         sender_intervention_model_action_index
                     ),
-                    "sender_intervention_action": (
-                        sender_intervention_action.to_dict()
-                        if sender_intervention_action is not None
-                        else None
-                    ),
+                    "sender_intervention_action": sender_intervention_action,
                     "sender_intervention_hint_label": (
                         sender_intervention_hint_label
                     ),
@@ -1456,6 +1740,8 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "sender_intervention_enabled": (
                     sender_self_derived_intervention
                 ),
+                "sender_intervention_arms": sender_intervention_arms,
+                "sender_interventions": sender_interventions,
                 "sender_intervention_seed": sender_intervention_seed,
                 "sender_intervention_instruction_hash": (
                     sender_intervention_instruction_hash
@@ -1468,11 +1754,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "sender_intervention_model_action_index": (
                     sender_intervention_model_action_index
                 ),
-                "sender_intervention_action": (
-                    sender_intervention_action.to_dict()
-                    if sender_intervention_action is not None
-                    else None
-                ),
+                "sender_intervention_action": sender_intervention_action,
                 "sender_intervention_hint_label": (
                     sender_intervention_hint_label
                 ),
@@ -1775,6 +2057,48 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         if sender_self_derived_intervention
         else {}
     )
+    sender_intervention_arm_comparisons_by_condition: dict[str, Any] = {}
+    if sender_intervention_arms:
+        for condition_name in conditions:
+            pseudo_samples: list[dict[str, Any]] = []
+            for sample in all_samples:
+                if sample.get("condition") != condition_name:
+                    continue
+                interventions = sample.get("sender_interventions") or {}
+                for arm in sender_intervention_arms:
+                    result = interventions.get(arm)
+                    if result is None:
+                        continue
+                    pseudo_samples.append(
+                        {
+                            "condition": arm,
+                            "repetition": sample["repetition"],
+                            "valid": result.get("valid") is True,
+                            "used_convention_hint": result.get(
+                                "used_convention_hint"
+                            ),
+                            "epistemic_choice_correct": result.get(
+                                "epistemic_choice_correct"
+                            ),
+                        }
+                    )
+            sender_intervention_arm_comparisons_by_condition[
+                condition_name
+            ] = {
+                "convention_hint": _all_pairwise_comparisons(
+                    pseudo_samples,
+                    sender_intervention_arms,
+                    field="used_convention_hint",
+                    valid_field="valid",
+                ),
+                "epistemic_choice": _all_pairwise_comparisons(
+                    pseudo_samples,
+                    sender_intervention_arms,
+                    field="epistemic_choice_correct",
+                    valid_field="valid",
+                ),
+            }
+
     sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
         all_samples,
         conditions,
@@ -1811,6 +2135,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "sender_self_derived_intervention": (
             sender_self_derived_intervention
         ),
+        "sender_intervention_arms": sender_intervention_arms,
         "sender_intervention_seed_offset": sender_intervention_seed_offset,
         "aggregate_by_condition": aggregate_by_condition,
         "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
@@ -1866,6 +2191,9 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ),
         "paired_sender_intervention_epistemic_choice_comparisons": (
             sender_intervention_choice_pairwise
+        ),
+        "paired_sender_intervention_arm_comparisons_by_condition": (
+            sender_intervention_arm_comparisons_by_condition
         ),
         "paired_sender_request_hash_comparisons": (
             sender_request_hash_pairwise
