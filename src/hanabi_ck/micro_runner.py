@@ -15,6 +15,7 @@ from .agents import OpenAICompatibleAgent
 from .conditions import DEFAULT_CONVENTION, get_condition
 from .logging import JsonlLogger
 from .micro_scenarios import MicroScenario, get_micro_scenario
+from .scaffolds import normalize_mechanical_scaffold
 from .runner import (
     ERROR_POLICIES,
     _build_agent,
@@ -498,7 +499,11 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             f"agent_error_policy must be one of {sorted(ERROR_POLICIES)}"
         )
 
+    mechanical_scaffold = normalize_mechanical_scaffold(
+        cfg.get("mechanical_scaffold", "derived")
+    )
     base_agent_spec = dict(cfg["agent"])
+    base_agent_spec.setdefault("mechanical_scaffold", mechanical_scaffold)
     sample_seed_start = int(cfg.get("sample_seed_start", 0))
     vary_api_seed = bool(cfg.get("vary_api_seed", True))
     shuffle_actions = bool(cfg.get("shuffle_legal_actions", True))
@@ -669,6 +674,7 @@ def run_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "experiment": experiment,
                 "scenario": scenario.name,
                 "scenario_description": scenario.description,
+                "mechanical_scaffold": mechanical_scaffold,
                 "condition": condition_name,
                 "condition_description": condition.description,
                 "repetition": repetition,
