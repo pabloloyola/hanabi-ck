@@ -20,6 +20,7 @@ from .micro_runner import (
     _wilson_interval,
 )
 from .micro_scenarios import get_pair_micro_scenario
+from .scaffolds import normalize_mechanical_scaffold, render_hint_effects
 from .runner import (
     ERROR_POLICIES,
     _build_agent,
@@ -330,9 +331,14 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             f"agent_error_policy must be one of {sorted(ERROR_POLICIES)}"
         )
 
+    mechanical_scaffold = normalize_mechanical_scaffold(
+        cfg.get("mechanical_scaffold", "derived")
+    )
     sender_only = bool(cfg.get("sender_only", False))
     sender_spec_base = dict(cfg.get("sender_agent") or cfg["agent"])
     receiver_spec_base = dict(cfg.get("receiver_agent") or cfg["agent"])
+    sender_spec_base.setdefault("mechanical_scaffold", mechanical_scaffold)
+    receiver_spec_base.setdefault("mechanical_scaffold", mechanical_scaffold)
     if sender_spec_base.get("type") != "openai_compatible":
         raise ValueError("micro-pair requires an openai_compatible sender")
     if (
@@ -404,6 +410,10 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     ),
                 }
             )
+        sender_hint_effects_for_prompt = render_hint_effects(
+            sender_hint_effects,
+            mechanical_scaffold,
+        )
         sender_convention_hint_index = sender_actions.index(
             scenario.convention_trigger_hint
         )
@@ -432,14 +442,20 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 sender_condition_instruction
                 + "\n\nDIAGNOSTIC COMMUNICATION GOAL:\n"
                 + scenario.sender_goal
-                + "\n\nPUBLIC MECHANICAL HINT EFFECTS:\n"
-                + "The following touched_indices and post-hint provable-safety "
-                + "annotations are deterministic consequences of the visible "
-                + "receiver hand, public knowledge, and public stacks; they are "
-                + "not hidden information. Use them to reason about which legal "
-                + "hint best achieves the goal:\n"
-                + json.dumps(sender_hint_effects, ensure_ascii=False)
             )
+            if mechanical_scaffold == "derived":
+                sender_instruction += (
+                    "\n\nPUBLIC MECHANICAL HINT EFFECTS:\n"
+                    + "The following touched_indices and post-hint provable-safety "
+                    + "annotations are deterministic consequences of the visible "
+                    + "receiver hand, public knowledge, and public stacks; they are "
+                    + "not hidden information. Use them to reason about which legal "
+                    + "hint best achieves the goal:\n"
+                    + json.dumps(
+                        sender_hint_effects_for_prompt,
+                        ensure_ascii=False,
+                    )
+                )
             sender_request_hash = _payload_hash(
                 sender._request_payload(
                     scenario.sender_observation,
@@ -479,6 +495,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                     "scenario": scenario.name,
                     "condition": condition_name,
                     "condition_wording_variant": condition_wording_variant,
+                    "mechanical_scaffold": mechanical_scaffold,
                     "repetition": repetition,
                     "valid": False,
                     "sender_only": sender_only,
@@ -523,7 +540,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         scenario.sender_observation,
                         sender_condition_instruction,
                         scenario.sender_goal,
-                        sender_hint_effects,
+                        sender_hint_effects_for_prompt,
                     )
                 )
                 probe_decision = sender_probe_agent.probe_sender_epistemics(
@@ -752,6 +769,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 "scenario_description": scenario.description,
                 "condition": condition_name,
                 "condition_wording_variant": condition_wording_variant,
+                "mechanical_scaffold": mechanical_scaffold,
                 "repetition": repetition,
                 "condition_order": condition_order,
                 "condition_order_index": condition_order_index,
