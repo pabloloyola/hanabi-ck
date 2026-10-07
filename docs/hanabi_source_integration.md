@@ -158,10 +158,10 @@ adapter/export layer rather than move its core experiments into that stack.
 - [x] Route the full-game runner through a backend factory.
 - [x] Add initial native/HLE parity checks.
 - [x] Run the HLE parity suite on Apple Silicon macOS with the native HLE library built.
-- [ ] Validate expanded parity coverage for discard-token recovery, life
+- [x] Validate expanded parity coverage for discard-token recovery, life
       exhaustion, and full seeded trajectories through the final round.
-- [ ] Add targeted parity coverage for rank-5 token recovery and additional
-      player counts (3-5 players).
+- [ ] Validate the newly added rank-5 token-recovery and 3-5 player parity
+      cases on the local HLE build.
 
 ### Phase B — mechanical scaffold axis
 
@@ -177,11 +177,19 @@ CK treatment
 agent prompt
 ```
 
-Candidate modes:
+Implemented modes:
 
-- `raw`;
-- `derived`;
-- `self_tracking`.
+- `raw`: backend-normalized observation and hint-derived card constraints,
+  without hanabi-ck's synthetic play-safety summaries or precomputed sender
+  hint effects;
+- `derived`: the historical hanabi-ck prompt with those deterministic
+  annotations included.
+
+Planned:
+
+- `self_tracking`: persistent model-maintained belief/memory state across
+  turns. This is a separate implementation step because it changes agent state,
+  not only prompt rendering.
 
 ### Phase C — full-game / cross-play validation
 
@@ -215,4 +223,7 @@ The parity suite has since been expanded further. During validation we found
 that HLE and the native engine keep different post-terminal current-player
 cursors. This is not actionable game state, so parity now explicitly ends
 current-player/observation comparison once both backends report `done=True`.
-The expanded suite must be rerun before marking that milestone complete.
+The corrected expanded suite was rerun successfully on the local Apple
+Silicon HLE build: all 11 then-current backend tests passed, including life
+exhaustion and three complete 2-player seeded trajectories. Additional rank-5
+and 3-5 player cases were added afterward and still require a local rerun.
