@@ -997,6 +997,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "experiment": experiment,
         "scenario": scenario.name,
         "scenario_description": scenario.description,
+        "mechanical_scaffold": mechanical_scaffold,
         "repetitions": repetitions,
         "conditions": conditions,
         "condition_wording_variant": condition_wording_variant,
