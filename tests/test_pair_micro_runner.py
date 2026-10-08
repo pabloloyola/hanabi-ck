@@ -1,9 +1,10 @@
 from hanabi_ck.actions import Action
-from hanabi_ck.pair_micro_runner import (
-    _expected_receiver_convention_knowledge,
-    _self_derived_intervention_instruction,
+from hanabi_ck.pair_analysis import (
     aggregate_pair_samples,
+    build_pairwise_metrics,
 )
+from hanabi_ck.pair_interventions import _self_derived_intervention_instruction
+from hanabi_ck.pair_micro_runner import _expected_receiver_convention_knowledge
 
 
 def _sample(
@@ -597,3 +598,89 @@ def test_pair_aggregation_reports_factorial_intervention_arms():
         ]
         == 1.0
     )
+
+
+
+def test_pairwise_metrics_builder_preserves_condition_and_arm_comparisons():
+    samples = [
+        {
+            "condition": "ck2_shared",
+            "repetition": 0,
+            "valid": True,
+            "sender_used_convention_hint": True,
+            "sender_epistemic_choice_correct": False,
+            "sender_request_payload_hash": "ck2-action",
+            "sender_probe_valid": True,
+            "sender_probe_identified_convention_hint": True,
+            "sender_probe_request_payload_hash": "ck2-probe",
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": True,
+            "sender_mechanical_probe_request_payload_hash": "mechanical",
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": False,
+            "sender_intervention_epistemic_choice_correct": True,
+            "sender_interventions": {
+                "fresh": {
+                    "valid": True,
+                    "used_convention_hint": True,
+                    "epistemic_choice_correct": False,
+                },
+                "mechanical": {
+                    "valid": True,
+                    "used_convention_hint": False,
+                    "epistemic_choice_correct": True,
+                },
+            },
+        },
+        {
+            "condition": "ck3_mutual",
+            "repetition": 0,
+            "valid": True,
+            "sender_used_convention_hint": True,
+            "sender_epistemic_choice_correct": True,
+            "sender_request_payload_hash": "ck3-action",
+            "sender_probe_valid": True,
+            "sender_probe_identified_convention_hint": True,
+            "sender_probe_request_payload_hash": "ck3-probe",
+            "sender_mechanical_probe_valid": True,
+            "sender_mechanical_probe_exact_correct": True,
+            "sender_mechanical_probe_request_payload_hash": "mechanical",
+            "sender_intervention_valid": True,
+            "sender_intervention_used_convention_hint": True,
+            "sender_intervention_epistemic_choice_correct": True,
+            "sender_interventions": {
+                "fresh": {
+                    "valid": True,
+                    "used_convention_hint": True,
+                    "epistemic_choice_correct": True,
+                },
+                "mechanical": {
+                    "valid": True,
+                    "used_convention_hint": True,
+                    "epistemic_choice_correct": True,
+                },
+            },
+        },
+    ]
+
+    result = build_pairwise_metrics(
+        samples,
+        ["ck2_shared", "ck3_mutual"],
+        sender_only=True,
+        epistemic_reliance_test=True,
+        sender_probe=True,
+        sender_mechanical_probe=True,
+        sender_intervention_arms=["fresh", "mechanical"],
+    )
+
+    assert (
+        result[
+            "paired_sender_mechanical_probe_request_hash_comparisons"
+        ]["ck2_shared__vs__ck3_mutual"]["hash_match_rate"]
+        == 1.0
+    )
+    ck2_arms = result[
+        "paired_sender_intervention_arm_comparisons_by_condition"
+    ]["ck2_shared"]["epistemic_choice"]["fresh__vs__mechanical"]
+    assert ck2_arms["left_only"] == 0
+    assert ck2_arms["right_only"] == 1
