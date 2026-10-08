@@ -2,13 +2,10 @@
 marp: true
 theme: default
 size: 16:9
-title: Section 11 — What the traces show
+title: Section 11 — Shadow probes and the capability-policy gap
 paginate: true
 style: |
-  section {
-    font-size: 28px;
-    padding: 44px 60px;
-  }
+  section { font-size: 28px; padding: 44px 60px; }
   h1 { font-size: 42px; margin-bottom: 0.55em; }
   h2 { font-size: 32px; }
   table { font-size: 21px; }
@@ -16,231 +13,127 @@ style: |
   blockquote { font-size: 27px; }
 ---
 
-# 11. What the traces show
+# 11. Shadow probes and the capability-policy gap
 
-## Why look beyond aggregate rates?
+## Probe after action, never before
 
-The tables tell us **what** each model chose.
+The sender action is sampled first.
 
-The traces help us understand **how** the model framed the choice.
+Then two fresh stateless calls ask separate questions:
 
-They let us ask:
+~~~text
+mechanical probe:
+  what does each candidate hint mechanically imply?
 
-```text
-Did the model mention partner uncertainty?
-Did it notice the robust route?
-Did it treat the convention as safe to rely on?
-Did its reasoning match its final action?
-```
+epistemic probe:
+  which hint invokes the convention?
+  is receiver convention knowledge established?
+~~~
 
----
-
-# Trace evidence is diagnostic, not the main metric
-
-We should be careful.
-
-Trace text is not a perfect window into cognition.
-
-But it is still useful when paired with behavior:
-
-```text
-behavior = primary evidence
-trace    = diagnostic evidence
-```
-
-A trace can reveal whether a wrong action came from:
-
-- missing the mechanics
-- missing the partner-knowledge issue
-- noticing the issue but not letting it control policy
+Probe answers never feed back into the baseline action.
 
 ---
 
-# GPT-5.4 CK2 traces
+# Mechanical shadow probe
 
-In CK2, GPT-5.4 often says something like:
+For each candidate hint, reconstruct:
 
-```text
-I have the convention,
-but I cannot assume Player 1 has it.
-```
+~~~text
+touched_indices
+receiver_provably_playable_indices_after_hint
+~~~
 
-Then it chooses the robust rank-1 hint.
+The probe receives no CK treatment and no sender goal.
 
-This is the desired chain:
-
-```text
-partner knowledge uncertain
-        ↓
-convention route unreliable
-        ↓
-choose robust route
-```
+Its request payload is therefore expected to be identical across CK2 and CK3.
 
 ---
 
-# GPT-5.4 CK3 traces
+# Epistemic shadow probe
 
-In CK3, GPT-5.4 often reasons differently:
+The epistemic probe asks for:
 
-```text
-Player 1 has the same convention.
-A rank-2 hint touches the newest card.
-The convention identifies that newest card as intended.
-```
+~~~text
+convention_hint_index
+receiver_convention_knowledge:
+  no_convention | unknown | known
+~~~
 
-Then it chooses the convention hint.
+Expected in the main contrast:
 
-This matches the treatment:
-
-```text
-partner knowledge assured
-        ↓
-convention route reliable
-        ↓
-choose rank-2 hint
-```
+~~~text
+CK2 -> unknown
+CK3 -> known
+~~~
 
 ---
 
-# The important GPT pattern
+# Combined-probe result
 
-GPT-5.4 does not just know the convention.
+Matched 20-pair raw minimal experiment:
 
-It changes when it is willing to rely on it.
+| Condition | Mechanical exact | Epistemic exact | Direct policy correct |
+|---|---:|---:|---:|
+| CK2 | 20/20 | 20/20 | 3/20 |
+| CK3 | 20/20 | 20/20 | 20/20 |
 
-```text
-CK2: knowledge of convention is not enough
-CK3: assurance of receiver knowledge makes it usable
-```
+CK2 contains the critical category:
 
-That is exactly the distinction the experiment targets.
-
----
-
-# Sonnet traces: capability without stable policy
-
-Sonnet has at least one CK2 trace that gets the intended reasoning right:
-
-```text
-rank-2 works only if Player 1 has the convention
-I cannot confirm that
-rank-1 works regardless
-choose rank-1
-```
-
-So Sonnet is not incapable of representing the issue.
-
-But this reasoning appears only rarely in behavior.
+~~~text
+both probes correct + action wrong = 17/20
+~~~
 
 ---
 
-# What Sonnet usually does
+# Mechanical negative control
 
-Most Sonnet CK2 samples still choose the convention hint.
+The mechanical-probe CK2 and CK3 requests were byte-identical:
 
-That suggests a different failure mode:
+~~~text
+paired request hashes matched:
+20 / 20
+~~~
 
-```text
-can sometimes articulate partner uncertainty
-        ↓
-but usually does not let that uncertainty govern the action
-```
+So the mechanical probe had no access to the epistemic manipulation.
 
-The issue is not simple ignorance of the rule.
-
-It is weak or unstable integration of the epistemic fact into policy.
+Yet it solved the relevant mechanics perfectly.
 
 ---
 
-# DeepSeek traces: mechanics without the CK switch
+# What this establishes
 
-DeepSeek also shows evidence of mechanical reasoning.
+The model has elicitable capability for both constituent subproblems:
 
-It can reason about which hint makes which cards playable.
+~~~text
+derive hint consequences       ✓
+classify partner knowledge     ✓
 
-But in the reliance task, it usually chooses:
+raw CK2 action policy          usually ✗
+~~~
 
-```text
-CK2: rank-2 convention hint
-CK3: rank-2 convention hint
-```
-
-So the missing piece is again the policy adjustment under partner uncertainty.
+This is a capability-policy gap.
 
 ---
 
-# A useful DeepSeek counterexample
+# What it does not establish
 
-One DeepSeek sample chose the robust hint in CK3.
+The probes are separate stateless calls.
 
-Mechanically, the reasoning made sense:
+So we should **not** claim that the original action call definitely computed
+both facts internally and then ignored them.
 
-```text
-rank-1 uniquely identifies the newest playable card
-rank-2 leaves several playable options
-```
+The supported claim is narrower:
 
-But in CK3, the convention route should be acceptable because receiver knowledge is assured.
-
-This shows the model can reason about ambiguity, but not consistently about when convention reliance is licensed.
-
----
-
-# Three trace-level patterns
-
-We can summarize the trace evidence like this:
-
-| Pattern | Model behavior |
-|---|---|
-| Epistemic fact controls action | common for GPT-5.4 |
-| Epistemic fact sometimes noticed but weakly controls action | Sonnet |
-| Mechanics handled, CK treatment mostly ignored | DeepSeek |
-
-This is a qualitative description, not a replacement for the metrics.
-
----
-
-# The trace story in one diagram
-
-```text
-GPT-5.4
-partner uncertainty → reliability judgment → action switch
-
-Sonnet
-partner uncertainty → sometimes recognized → usually no switch
-
-DeepSeek
-mechanical hint analysis → convention route preferred → usually no switch
-```
-
-The key difference is where the epistemic treatment enters the decision.
-
----
-
-# Why this matters for interpretation
-
-The traces argue against a shallow interpretation such as:
-
-```text
-GPT knows the convention; the others do not.
-```
-
-That is not right.
-
-The stronger interpretation is:
-
-```text
-All models can use the convention.
-GPT is much better at deciding when reliance on that convention is justified.
-```
+> The same model can produce the relevant facts under targeted elicitation, while
+> its raw action policy usually does not express the appropriate CK2 behavior.
 
 ---
 
 # Section 11 takeaway
 
-> **The traces suggest the core difference is not convention recognition, but whether partner-knowledge uncertainty actually controls action selection.**
+> **The raw CK2 failure is not explained by absence of mechanical or epistemic
+> capability under targeted elicitation.**
 
-This prepares the careful interpretation in the next section.
+The next experiment turns the probes from measurements into interventions.
 
 ---
