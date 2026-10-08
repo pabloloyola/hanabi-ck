@@ -2,13 +2,10 @@
 marp: true
 theme: default
 size: 16:9
-title: Section 13 — Next experiments
+title: Section 13 — Interpretation and next replication
 paginate: true
 style: |
-  section {
-    font-size: 28px;
-    padding: 44px 60px;
-  }
+  section { font-size: 28px; padding: 44px 60px; }
   h1 { font-size: 42px; margin-bottom: 0.55em; }
   h2 { font-size: 32px; }
   table { font-size: 21px; }
@@ -16,253 +13,156 @@ style: |
   blockquote { font-size: 27px; }
 ---
 
-# 13. Next experiments
+# 13. Interpretation and next replication
 
-## What we need next
+## The claim is stronger — and more specific
 
-We have a strong single-scenario dissociation.
+The old headline was:
 
-The next goal is to test whether the same pattern survives:
+~~~text
+GPT-5.4 is sensitive to CK2 vs CK3
+~~~
 
-- different Hanabi states
-- different hint attributes
-- different convention phrasings
-- larger sample sizes
-- stronger statistical modeling
-- rule validation against a reference environment
+The new result says that this sensitivity depends on how mechanically derived
+consequences are made available to the action policy.
 
 ---
 
-# Priority 1 — scenario replication
+# Recommended paper claim
 
-Create a second and third reliance scenario with the same abstract structure:
+> In a controlled Hanabi signaling diagnostic, GPT-5.4 can independently
+> recover both the relevant hint mechanics and the partner-knowledge state.
+> Nevertheless, its raw CK2 action policy usually relies on the convention.
+> Feeding back only the model's own mechanical derivation restores the
+> condition-appropriate CK2 policy.
 
-```text
-robust hint works without convention
-convention hint is better only when receiver knowledge is assured
-```
-
-But vary the surface details:
-
-```text
-rank values
-colors
-which cards are touched
-which card is newest
-stack states
-```
-
-This checks that the result is not tied to one rank-1 / rank-2 construction.
+This is narrower than "formal common knowledge," but more mechanistically useful.
 
 ---
 
-# Scenario replication design
+# What we should not claim
 
-For each new scenario, preserve the logic:
+Do not say:
 
-```text
-CK2 expected action: robust route
-CK3 expected action: convention route
-```
+~~~text
+GPT-5.4 internally computed the mechanics
+and consciously ignored them
+~~~
 
-Then run the same minimal-pair matrix:
+The shadow probes are separate calls.
 
-```text
-GPT-5.4
-DeepSeek V4 Flash
-Claude Sonnet 5.5
-```
+Do not say:
 
-The key outcome is whether the cross-model pattern repeats.
+~~~text
+GPT-5.4 has formal common knowledge
+~~~
 
----
-
-# Priority 2 — larger-N replication
-
-The current 20-pair runs are enough to see the effect.
-
-For publication-quality analysis, increase to something like:
-
-```text
-50 or 100 paired repetitions
-per model
-per scenario
-```
-
-This gives more stable estimates of:
-
-- convention hint rate
-- predicted switch rate
-- invalid-call rate
-- scenario-by-model variability
+CK2 → CK3 is a finite partner-knowledge-assurance manipulation.
 
 ---
 
-# Priority 3 — model × condition analysis
+# Why the factorial result matters
 
-Move from descriptive tables to an explicit model.
+It rules out several simpler stories.
 
-Example outcome:
+~~~text
+"just give it another try"
+    -> fresh reaches only 30%
 
-```text
-sender chose convention hint: yes/no
-```
+"just remind it receiver knowledge is unknown"
+    -> epistemic-only reaches only 10%
 
-Predictors:
+"surface the hint consequences"
+    -> mechanical reaches 100%
+~~~
 
-```text
-model
-condition: CK2 vs CK3
-scenario
-model × condition interaction
-```
-
-The important term is the interaction:
-
-```text
-does CK3 increase convention reliance differently by model?
-```
+That is a causal localization, not only a correlation.
 
 ---
 
-# Priority 4 — HLE parity tests
+# Remaining limitation: one mechanical construction
 
-Keep the custom harness for epistemic microstates.
+The robust route in the current scenario depends on negative information:
 
-But validate standard Hanabi mechanics against the DeepMind Hanabi Learning Environment where possible.
-
-Check things like:
-
-```text
-legal moves
-hint effects
-stack updates
-discard effects
-token updates
-terminal scoring
-```
-
-This makes the custom engine easier to defend.
-
----
-
-# Priority 5 — convention wording ablations
-
-Test whether the pattern depends on the exact convention phrase.
-
-Variants:
-
-```text
-"newest touched card"
-"rightmost touched card"
-"most recently drawn card"
-"the newest matching card is intended"
-```
-
-The goal is not to find the best prompt.
-
-The goal is to see whether partner-knowledge sensitivity generalizes across equivalent conventions.
-
----
-
-# Priority 6 — remove helpful annotations
-
-Currently we often provide mechanical annotations such as:
-
-```text
-rank-1 → provably playable: [4]
-rank-2 → provably playable: [1,2,4]
-```
-
-This isolates epistemic policy from deduction skill.
-
-A later harder condition should remove or reduce these annotations.
-
-Then we can ask whether the model can compute both mechanics and epistemic policy itself.
-
----
-
-# Priority 7 — full chain runs
-
-Sender-only runs isolate sender policy.
-
-Full sender → receiver runs test end-to-end coordination:
-
-```text
-P0 chooses hint
+~~~text
+newest was not touched by rank 1
         ↓
-P1 receives updated observation
+therefore newest cannot be rank 1
         ↓
-P1 chooses play
-        ↓
-coordination success or failure
-```
+therefore newest is Y2
+~~~
 
-This is noisier but closer to actual gameplay.
+So the next replication should change the *mechanical route*.
 
 ---
 
-# Priority 8 — trace coding
+# Chosen next replication
 
-Manually or automatically label traces for reasoning features:
+Build a second sender-reliance microstate where the robust route uses
+**direct positive information** rather than the current negative-information
+chain.
 
-```text
-mentions receiver uncertainty
-mentions robust route
-mentions convention route
-states whether receiver has convention
-matches final action
-```
+Preserve:
 
-Then compare:
+~~~text
+CK2 expected -> robust signal
+CK3 expected -> convention-dependent signal
+~~~
 
-```text
-trace recognition vs behavior
-```
-
-This separates verbal recognition from policy control.
+Change rank/color values, touch pattern, stack state, and the mechanism
+establishing robust playability.
 
 ---
 
-# Priority 9 — additional models
+# Why this replication is high value
 
-Add models only after the design is stable.
+If the same pattern appears:
 
-Useful model categories:
+~~~text
+derived -> strong CK switch
+raw -> weak CK switch
+mechanical self-feedback -> rescue
+~~~
 
-- strong OpenAI model
-- strong Anthropic model through a reliable route
-- DeepSeek reasoning/non-reasoning variants
-- local Qwen variants
-- smaller open models
+then the result is unlikely to be an artifact of one negative-information
+deduction.
 
-The goal is a taxonomy of epistemic-policy behavior, not a leaderboard.
+That is a stronger generalization than immediately adding more models.
 
 ---
 
-# Near-term execution plan
+# After scenario replication
 
-A practical order:
+1. run the positive-information scenario on GPT-5.4;
+2. repeat derived/raw/factorial controls;
+3. then run the strongest contrasting models;
+4. fit model × condition × scaffold × scenario analysis;
+5. return to longer-horizon sender → receiver or full-game tests.
 
-```text
-1. implement scenario replication A
-2. run GPT / DeepSeek / Sonnet minimal-pair matrix
-3. add HLE parity tests
-4. scale to larger N on the best scenarios
-5. run model × condition analysis
-6. write the method/results draft
-```
+---
 
-This turns the current pilot into a defensible study.
+# Statistical framing
+
+Repeated API calls are not independent human subjects.
+
+Use paired exact tests and Wilson intervals as descriptive diagnostics.
+
+For the mature study, model:
+
+~~~text
+action ~ condition * scaffold * model * scenario
+~~~
+
+with repetition/provider variation represented explicitly where possible.
 
 ---
 
 # Section 13 takeaway
 
-> **The next step is not more random model testing; it is scenario replication plus formal analysis.**
+> **The next replication should change the Hanabi mechanics, not merely the
+> wording or the model.**
 
-We already have a strong seed result.
-
-Now we need to show it is stable, not an artifact of one scenario or one prompt surface.
+A positive-information reliance scenario is the clearest next generalization
+test.
 
 ---
