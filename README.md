@@ -1,19 +1,16 @@
 # hanabi-ck
 
-A small, reproducible Hanabi testbed for studying **common knowledge,
-conventions, partner modelling, and coordination in LLM agents**.
+A reproducible Hanabi testbed for studying **partner knowledge, conventions, and
+coordination in LLM agents**.
 
-The first version intentionally separates:
+The core question is:
 
-1. **Game engine** — deterministic Hanabi rules and observations.
-2. **Agent interface** — random, simple heuristic, or OpenAI-compatible LLM agents.
-3. **Experimental condition** — common-knowledge / convention manipulation.
-4. **Instrumentation** — JSONL turn logs with both agent-visible observations and
-   researcher-only ground truth.
-5. **Metrics** — score, misplays, epistemically unsafe plays, hints, discards,
-   hint efficiency proxies, and cross-condition aggregation.
+> Does an LLM change its cooperative action when only what it knows about its
+> partner's knowledge changes?
 
-The default experiment is 2-player Hanabi, but the engine supports 2–5 players.
+The project uses controlled Hanabi microstates so that physical state,
+communication goal, and legal actions can be held fixed while the epistemic
+treatment changes.
 
 ## Quick start
 
@@ -23,253 +20,146 @@ uv run pytest
 uv run hanabi-ck run configs/smoke.yaml
 ```
 
-Results are written under `runs/`.
-
-The smoke config uses a deterministic baseline that deliberately ignores the
-common-knowledge prompt manipulation. Its purpose is to validate game dynamics,
-observations, logging, and metrics. The CK rows should therefore match each
-other, while the baseline should still produce successful plays and a non-zero
-score. The baseline only plays cards that are provably playable under its
-hint-derived public knowledge.
-
-## Game backends
-
-Full-game experiments now run through a small backend interface.
-
-The default remains the existing pure-Python engine:
-
-```yaml
-backend: native
-```
-
-This preserves current experiment behavior and remains the backend used for
-controlled/injected microstates.
-
-A second optional backend wraps DeepMind's archived Hanabi Learning Environment
-(HLE):
-
-```yaml
-backend: hle
-```
-
-The HLE adapter is intended for standard full-game trajectories and as an
-independent mechanics reference. It normalizes HLE's zero-based ranks and
-relative hint targets into the same `Action` / `PlayerObservation` schema used
-by the native backend. HLE exposes the remaining deck size but not the identities
-of undealt cards, so `researcher_true_state_before["deck"]` is `null` for that
-backend.
-
-HLE is deliberately **not** a mandatory dependency. The official repository is
-an archived C++/CFFI project with a legacy build setup, so install it explicitly
-when running reference-backend or parity tests. The adapter is pinned/documented
-against DeepMind commit `54e79594f4b6fb40ebb3004289c6db0e34a8b5fb`.
-
-On Apple Silicon macOS, use the checked-in helper:
+Receiver-only micro diagnostic:
 
 ```bash
-bash scripts/install_hle_macos.sh
-uv run pytest tests/test_backends.py -v
+uv run hanabi-ck micro configs/micro_newest.yaml
 ```
 
-The helper applies the modern-CMake compatibility flag
-`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, which is required because HLE's 2021
-root `CMakeLists.txt` still declares CMake 2.8.11 compatibility.
+Sender/receiver or sender-reliance diagnostics:
 
-Without HLE installed, the HLE-specific tests skip while the native backend tests
-continue to run.
+```bash
+uv run hanabi-ck micro-pair <config.yaml>
+```
 
-The architectural boundary is intentional:
+Results are written under `runs/`.
+
+## Start with the docs
+
+- [Documentation index](docs/README.md)
+- [Experiment/config guide](docs/experiments.md)
+- [Current GPT-5.4 result](docs/gpt54_scaffold_factorial_results.md)
+- [Backend and mechanical-scaffold architecture](docs/hanabi_source_integration.md)
+- [Illustrated harness guide](docs/hanabi_ck_harness_guide.tex)
+- [Presentation](docs/hanabi_ck_presentation.md)
+
+## Experimental CK ladder
+
+The treatment names are:
+
+| Condition | Meaning for the convention |
+|---|---|
+| `ck0` | no convention |
+| `ck1_private` | one designated player receives it |
+| `ck2_shared` | both receive it privately; no assurance about partner knowledge |
+| `ck3_mutual` | both receive it and are explicitly told the other did |
+| `ck_inf_common` | public/common-knowledge framing |
+
+These labels are experimental approximations. In particular, CK3 is a finite
+partner-knowledge-assurance manipulation, not proof of formal common knowledge.
+
+The starter convention is:
+
+> If a player gives a rank hint that touches the receiver's newest card, the
+> receiver should interpret that newest card as intended to be played as soon as
+> it is safe to do so.
+
+## Main sender-reliance diagnostic
+
+The central controlled scenario is `sender_reliance_ck2_ck3`.
+
+The sender chooses between:
 
 ```text
-CK treatment / agents / logging
-             |
-        HanabiBackend
-        /           \
-   native            HLE
- microstates     canonical games
+robust hint
+  works without relying on the convention
+
+convention hint
+  is reliable only when receiver convention knowledge is established
 ```
 
-CK0/CK1/CK2/CK3/CK∞ remain experimental prompt treatments above the game
-backend; they are not implemented inside HLE.
+Expected policy:
 
-## Mechanical scaffolds
+```text
+CK2 -> robust
+CK3 -> convention
+```
 
-LLM prompts now expose mechanical support as a separate experimental axis from
-the CK treatment.
+The diagnostic is deliberately artificial: its purpose is to isolate a single
+epistemic-policy decision.
 
-The default is:
+## Mechanical scaffold is a separate axis
+
+Mechanical support is controlled independently of the CK treatment.
 
 ```yaml
 mechanical_scaffold: derived
 ```
 
-`derived` preserves the historical hanabi-ck prompt used for the existing
-results. It includes the deterministic
-`provably_playable_indices`, `provably_obsolete_indices`, and `play_safety`
-summaries. In the sender-reliance micro diagnostic it also includes the
-precomputed touched-card and post-hint safety annotations.
-
-The new ablation is:
+`derived` includes deterministic safety summaries and, in the sender-reliance
+scenario, precomputed hint consequences.
 
 ```yaml
 mechanical_scaffold: raw
 ```
 
-`raw` removes those synthetic safety summaries from the LLM prompt. It still
-includes backend-normalized public card-knowledge constraints
-(`own_knowledge` / `public_knowledge`) produced by legal Hanabi hints, so
-"raw" means **no hanabi-ck safety derivation**, not an absence of all mechanical
-state tracking. In the pair diagnostic, raw also withholds precomputed
-`touched_indices` and post-hint safety effects from the sender.
+`raw` keeps the legal/public Hanabi state and hint-derived card constraints but
+removes hanabi-ck's synthetic safety summaries and precomputed sender hint
+effects.
 
-This gives the experimental separation:
+Conceptually:
 
 ```text
-game backend
-    |
-mechanical scaffold: raw vs derived
-    |
-CK treatment: CK0 / CK1 / CK2 / CK3 / CK∞
-    |
+game/backend state
+      ↓
+mechanical scaffold: raw | derived
+      ↓
+CK treatment
+      ↓
 LLM policy
 ```
 
-A two-call GPT-5.4 plumbing smoke test is available at:
+## Current GPT-5.4 finding
 
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_smoke.yaml
-```
+The historical derived-scaffold result showed a large CK2 → CK3 switch. Under
+the raw scaffold, that behavioral distinction mostly collapses because CK2
+becomes convention-heavy.
 
-The sender-reliance diagnostic also supports a **stateless mechanical shadow
-probe**:
+Independent post-action probes show that GPT-5.4 can nevertheless recover both
+the relevant Hanabi mechanics and the partner-knowledge state.
+
+A four-arm intervention then feeds the model's own probe outputs back into a
+fresh decision:
+
+| CK2 intervention | Correct policy |
+|---|---:|
+| fresh retry | 6/20 |
+| mechanical feedback only | 20/20 |
+| epistemic feedback only | 2/20 |
+| both | 20/20 |
+
+All four CK3 arms remain 20/20 correct.
+
+The current interpretation is an **elicitable-capability / action-policy gap**:
+in this scenario, making mechanically derived consequences decision-salient is
+sufficient to restore the appropriate CK2 policy.
+
+For the full sequence, counts, caveats, and claim language, use
+[docs/gpt54_scaffold_factorial_results.md](docs/gpt54_scaffold_factorial_results.md).
+
+## Shadow probes and interventions
+
+The pair harness supports post-action diagnostics:
 
 ```yaml
 sender_shadow_mechanical_probe: true
+sender_shadow_probe: true
 ```
 
-The sender action is sampled first. A fresh request then receives the same
-player-visible raw state plus only the robust and convention candidate hints. It
-does **not** receive the CK instruction, sender goal, touched-card annotations,
-or ground-truth post-hint safety. It must infer for each candidate:
+The baseline action is always sampled first. Shadow-probe answers therefore
+cannot change the baseline action.
 
-```text
-touched_indices
-receiver_provably_playable_indices_after_hint
-```
-
-This separates two failure modes under the raw scaffold:
-
-```text
-mechanical probe wrong + CK2 convention hint
-    -> mechanical reasoning bottleneck
-
-mechanical probe exact + CK2 convention hint
-    -> mechanics were recognized, but policy/risk integration failed
-```
-
-The aggregate report includes exact mechanical-probe accuracy, robust/convention
-effect accuracy, and sender choice accuracy conditional on exact mechanics. The
-mechanical probe payload should hash identically across CK2 and CK3 within a
-paired repetition because it contains no CK treatment text.
-
-Run the four-call plumbing smoke test before scaling:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_mechanical_probe_smoke.yaml
-```
-
-The matched 20-pair mechanical diagnostic is:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_mechanical_probe.yaml
-```
-
-To classify failures more sharply, both shadow probes can be enabled together.
-The sender action is still sampled first. Then two independent stateless calls
-measure:
-
-```text
-mechanical probe:
-  can the model reconstruct the hint consequences?
-
-epistemic probe:
-  can the model identify the convention hint and whether receiver knowledge
-  of that convention is established?
-```
-
-The aggregate report then classifies valid joint-probe samples hierarchically:
-
-```text
-mechanics_wrong
-mechanics_correct_epistemics_wrong
-both_probes_correct_action_wrong
-both_probes_correct_action_correct
-```
-
-The strongest policy-integration failure is
-`both_probes_correct_action_wrong`: both isolated capabilities are present,
-but the sampled game action still violates the condition-specific robust policy.
-
-Run the six-call plumbing smoke test:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_combined_probe_smoke.yaml
-```
-
-The matched 20-pair combined diagnostic uses 120 calls total:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_combined_probe.yaml
-```
-
-A causal follow-up can feed the model's **own two probe outputs** back into a
-fresh action decision:
-
-```yaml
-sender_self_derived_intervention: true
-```
-
-The baseline action is still sampled first. The two independent shadow probes
-then run unchanged. Only after that does a fresh sender call receive the original
-raw action prompt plus:
-
-```text
-SELF-DERIVED FACTS FROM INDEPENDENT SHADOW PROBES
-  mechanical_hint_effects: ...
-  epistemic_facts:
-    convention_hint_index: ...
-    receiver_convention_knowledge: ...
-```
-
-The intervention does not substitute researcher truth for the model's answers:
-if a probe is wrong, the wrong self-derived fact is what gets fed back. This
-tests whether making the model's own elicitable facts jointly available at
-decision time rescues the CK2 robust policy.
-
-The aggregate report includes baseline-to-intervention transition counts,
-intervention policy accuracy, rescue rate among baseline failures, and rescue
-rate specifically among cases where both shadow probes were correct.
-
-Run the eight-call smoke test:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_self_derived_intervention_smoke.yaml
-```
-
-The matched 20-pair intervention experiment uses 160 calls total:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_self_derived_intervention.yaml
-```
-
-The intervention can also be decomposed into a four-arm factorial ablation:
+The factorial intervention supports:
 
 ```yaml
 sender_intervention_arms:
@@ -279,77 +169,52 @@ sender_intervention_arms:
   - both
 ```
 
-The arms are:
+`fresh` repeats the original action prompt and acts as the second-sample
+control. The other arms append only the indicated self-derived facts.
 
-```text
-fresh       original raw action prompt again; no probe facts
-mechanical  feed back only the model's mechanical-probe output
-epistemic   feed back only the model's epistemic-probe output
-both        feed back both self-derived outputs
+See [docs/experiments.md](docs/experiments.md) for the exact configs.
+
+## Game backends
+
+The default backend is the native Python engine:
+
+```yaml
+backend: native
 ```
 
-`fresh` is the critical second-attempt control. With
-`vary_api_seed: false`, its request payload should hash identically to the
-baseline action request; any improvement there is therefore attributable to
-another sample from the same prompt rather than added information. The other
-arms differ only by which self-derived facts are appended. Arm execution order
-is deterministically shuffled per repetition/condition and logged, so provider
-or temporal drift is not confounded with a fixed arm order.
+It supports the injected microstates required by the CK experiments.
 
-Per-condition summaries report convention-hint rate, condition-specific policy
-accuracy, baseline-to-arm transitions, baseline-failure rescue rate, and rescue
-rate restricted to trials where both probes were correct. They also report each
-arm's request-hash match rate against baseline. Within-condition paired
-comparisons across intervention arms are written to
-`paired_sender_intervention_arm_comparisons_by_condition`.
+An optional DeepMind Hanabi Learning Environment backend is available:
 
-Run the 14-call factorial smoke test:
+```yaml
+backend: hle
+```
+
+HLE is used for standard full-game trajectories and independent mechanics
+validation, not for arbitrary injected microstates.
+
+The adapter is documented against HLE commit
+`54e79594f4b6fb40ebb3004289c6db0e34a8b5fb`.
+
+On Apple Silicon:
 
 ```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_factorial_intervention_smoke.yaml
+bash scripts/install_hle_macos.sh
+uv run pytest tests/test_backends.py -v
 ```
 
-The matched 20-pair factorial experiment uses 280 calls total:
+The expanded local parity suite has passed rank-5 token recovery, complete
+2-player seeded trajectories, and 3–5 player cases.
 
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_raw_factorial_intervention.yaml
-```
+More detail:
+[docs/hanabi_source_integration.md](docs/hanabi_source_integration.md).
 
-### Current GPT-5.4 result
+## Agents
 
-The current result sequence is summarized in
-`docs/gpt54_scaffold_factorial_results.md`.
+The harness supports deterministic baselines and OpenAI-compatible LLM
+endpoints.
 
-The central finding is that the strong CK2 -> CK3 switch seen with the derived
-mechanical scaffold mostly collapses under the raw scaffold. Independent shadow
-probes show that GPT-5.4 can still reconstruct the relevant mechanics and
-partner-knowledge state. In the factorial intervention, CK2 policy accuracy was:
-
-```text
-fresh retry:       6/20
-mechanical only:  20/20
-epistemic only:    2/20
-both facts:       20/20
-```
-
-All four CK3 intervention arms remained 20/20 correct. The current
-interpretation is therefore an elicitable-capability/action-policy gap whose
-dominant bottleneck, in this scenario, is making mechanically derived hint
-consequences decision-salient.
-
-The next replication target is a mechanically distinct sender-reliance
-microstate in which the robust route is established through **direct positive
-information** rather than the current negative-information deduction.
-
-A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
-requires persistent per-agent belief/memory state rather than only a different
-single-turn rendering.
-
-## Run a local LLM (LM Studio / OpenAI-compatible API)
-
-Start an OpenAI-compatible server, then:
+For a local LM Studio server:
 
 ```bash
 export OPENAI_BASE_URL=http://localhost:1234/v1
@@ -357,421 +222,95 @@ export OPENAI_API_KEY=lm-studio
 uv run hanabi-ck run configs/lmstudio.yaml
 ```
 
-The same adapter can point at a stronger remote model as long as the endpoint is
-OpenAI-compatible. Omit `base_url` and `api_key` from YAML and set
-`OPENAI_BASE_URL` / `OPENAI_API_KEY`, or provide them in the agent spec.
+For remote endpoints, provide the endpoint/model in YAML and the API key through
+the environment.
 
-Before spending calls on an experiment, validate the endpoint in three stages:
-auth/model discovery, a minimal chat completion, and the strict JSON-schema
-format used by the harness:
+Before spending calls on a new endpoint:
 
 ```bash
-uv run hanabi-ck api-check configs/micro_pair_probe_deepseek_v4_flash.yaml
+uv run hanabi-ck api-check <config.yaml>
 ```
 
-The command never prints the API key. Remote endpoints now fail immediately with
-a clear configuration error if no API key is resolved, instead of silently using
-the local LM Studio placeholder key.
-For providers that do not accept a request `seed`, set
-`vary_api_seed: false`. Provider-specific LM Studio/Qwen fields in
-`extra_body` should be removed when switching providers. A clean template is
-available at `configs/micro_pair_probe_api.example.yaml`.
+The model selects from an indexed list of legal actions and returns:
 
-The LLM chooses from an indexed list of legal actions and returns only
-`{"action_index": N}`. This avoids ambiguous action-shaped JSON and lets the
-structured-output schema constrain the choice to an action that is actually
-legal in the current state. For research runs, the default
-`agent_error_policy: abort` means API failures or malformed responses are
-logged and the game is marked invalid **without executing a Hanabi action**. A
-`safe_baseline` policy is also available for debugging.
-
-Observations explicitly state `hand_order: oldest_to_newest` and provide
-`newest_card_index` for each player, so conventions involving card age do not
-depend on an undocumented implementation detail. They also expose
-`provably_playable_indices`, `provably_obsolete_indices`, and per-card
-`play_safety`. These are deterministic consequences of the acting player's
-hint-derived knowledge and the public stacks; they do not use hidden cards.
-
-The logs distinguish **physical success** from **epistemic justification**.
-A play can happen to succeed while still being epistemically unsafe. Summaries
-therefore include `epistemically_unsafe_plays`, `successful_unsafe_plays`,
-and `unsafe_play_rate`.
-
-
-## Illustrated LaTeX guide
-
-A self-contained illustrated overview of the research question, harness design,
-failure modes, micro-scenarios, current results, and next experiments lives at:
-
-`docs/hanabi_ck_harness_guide.tex`
-
-Build it with:
-
-```bash
-latexmk -pdf docs/hanabi_ck_harness_guide.tex
+```json
+{"action_index": 3}
 ```
 
-The figures and result chart are drawn directly in LaTeX with TikZ/PGFPlots, so
-the guide does not depend on external image assets.
-
-## Micro-Hanabi diagnostic
-
-Before interpreting full-game score differences, use the one-step diagnostic:
-
-```bash
-uv run hanabi-ck micro configs/micro_newest.yaml
-```
-
-The starter scenario, `newest_rank1_three_safe`, fixes the game state immediately
-after a rank-1 hint touches cards 1, 2, and newest card 4. All three touched cards
-are provably playable. The convention therefore changes only which safe card is
-intended, not whether the target card is physically or epistemically safe.
-
-The micro runner evaluates all five CK conditions over repeated paired samples.
-The default config uses 100 repetitions. It counterbalances CK1 so the acting
-receiver (P1) privately receives the convention, varies the model seed by
-repetition, and deterministically shuffles the legal action order. A given repetition uses the same action seed and same action order in every
-condition. Conditions themselves are executed in a deterministic randomized
-order inside each repetition, reducing position bias as well as wall-clock /
-server-state confounding.
-
-The main statistic is `newest_selection_rate`:
-
-```text
-P(play the newest touched safe card | condition)
-```
-
-It also reports a Wilson 95% interval for the newest-selection rate,
-`newest_given_safe_candidate_play_rate`, `safe_candidate_play_rate`,
-`play_rate`, and action/card-index counts. The summary includes paired
-condition comparisons keyed by repetition, with both-positive, neither-positive,
-left-only, right-only, and the paired rate difference.
-
-The default config also enables a **shadow intention probe**. The action call is
-made first; afterward, a separate stateless request asks only which touched safe
-card the partner intended, constrained to the candidate card indices. Probe
-output is never inserted into the action prompt or any future context. Probe
-seeds use a separate offset from action seeds. The report includes `probe_newest_rate`, its Wilson interval, action/probe
-agreement, `recognition_behavior_gap`, and a recognition-vs-behavior table.
-Because action and probe are separate stochastic calls, the co-indexed
-action/probe statistic is descriptive rather than a causal mediation estimate.
-
-For reproducibility diagnostics, the runner hashes the exact action and probe
-request payloads. Pairwise hash-match rates are reported; CK1 and CK2 are
-especially useful here because the informed receiver is intentionally given
-identical local wording in the one-step scenario.
-
-CK1 and CK2 intentionally have identical local wording for the informed
-receiver: the difference between those treatments is whether the partner
-actually received the convention, which is not directly observable in this
-one-step receiver-only scenario.
-
-Micro logs are written to:
-
-```text
-runs/<experiment>/micro/<scenario>/<condition>.jsonl
-```
-
-
-### Two-agent sender → receiver diagnostic
-
-The next step tests both convention **encoding** and **decoding**. Start with
-the low-cost smoke run, then scale to the full 100-repetition experiment:
-
-```bash
-uv run hanabi-ck micro-pair configs/micro_pair_smoke.yaml
-uv run hanabi-ck micro-pair configs/micro_pair_pilot.yaml
-uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
-uv run hanabi-ck micro-pair configs/micro_pair_newest.yaml
-```
-
-P0 is given a fixed communication goal: use exactly one legal Hanabi hint to
-communicate that P1 should play their newest card. The goal deliberately avoids
-naming the numeric slot index, so it cannot be confused with a rank value. The
-revised receiver hand also removes rank 4 as a legal sender hint while preserving
-the convention-triggering rank-1 touch set [1, 2, 4]. P1 then receives the
-observation produced by the actual hint and chooses an action. The pair runner reports the
-sender's convention-triggering rank-hint rate, the receiver's newest-card rate,
-and receiver success conditional on the sender using the convention-triggering
-hint.
-
-For CK1 in this pair experiment, only the sender is informed
-(`ck1_informed_players: [0]`). This creates the useful asymmetric case where
-the sender may encode with a convention that the receiver cannot assume.
-
-The sender prompt also receives a deterministic annotation of each legal hint's
-`touched_indices`. These are mechanically derivable from the visible receiver
-hand and are exposed so the diagnostic measures convention use rather than the
-model's ability to mentally simulate hint effects.
-
-After the revised 20-repetition pilot showed that the sender still rarely chose
-the convention-triggering hint, the harness gained a separate **sender shadow
-probe**. The action is sampled first; then a fresh stateless call asks:
-
-- which indexed hint invokes the supplied convention for the communication goal;
-- whether the sender's instruction implies that the receiver's convention
-  knowledge is `no_convention`, `unknown`, or `known`.
-
-This produces `sender_probe_mapping_accuracy`,
-`sender_probe_partner_knowledge_accuracy`, and
-`sender_probe_knowledge_to_action_gap`. CK1 and CK2 should both yield
-`unknown` for the sender's belief about the receiver because their sender-local
-wording is intentionally identical. Run this diagnostic with:
-
-```bash
-uv run hanabi-ck micro-pair configs/micro_pair_probe_pilot.yaml
-```
-
-That pilot uses 20 repetitions and makes 300 calls: sender action, sender shadow
-probe, and receiver action for each condition/repetition.
-
-### CK2 -> CK3 epistemic-reliance diagnostic
-
-The original pair scenario can separate "receiver has the convention" from
-"receiver does not have it", but a strong model may use the convention even when
-the sender is unsure whether the receiver has it. The
-`sender_reliance_ck2_ck3` scenario therefore makes the sender choose between:
-
-- a robust rank-1 hint that does not trigger the convention and mechanically
-  leaves only the newest card provably playable;
-- a rank-2 convention hint that leaves three cards provably playable and is
-  therefore only unambiguous when the sender can rely on the receiver knowing
-  the convention.
-
-Reliability is primary; if both routes are reliable, the sender is asked to
-prefer the more informative hint. The predicted sender switch is therefore:
-
-`ck0/ck1_private/ck2_shared -> robust` and
-`ck3_mutual/ck_inf_common -> convention`.
-
-Run the five-repetition DeepSeek/OpenRouter pilot with:
-
-```bash
-export OPENROUTER_API_KEY=...
-uv run hanabi-ck micro-pair \
-  configs/micro_pair_reliance_openrouter_deepseek_v4_flash.yaml
-```
-
-The summary reports `sender_robust_hint_rate`,
-`sender_epistemic_choice_accuracy`, and pairwise comparisons of
-`sender_used_convention_hint` in addition to the existing receiver and probe
-metrics. This scenario is specifically aimed at the CK2 -> CK3 transition,
-where the sender's own convention text is no longer enough: it must know that
-the receiver also has the convention.
-
-For a cheaper cross-model check, `sender_only: true` skips both receiver
-execution and receiver metrics. The GPT-5.4 configs compare only CK2 vs CK3,
-with no shadow probe, so the 20-repetition screen makes exactly 40 model calls.
-GPT-5.4 is run through OpenRouter with the OpenAI provider pinned and medium
-reasoning. Because GPT-5.4 does not accept `temperature` together with
-non-none reasoning effort, the config sets `temperature: null`.
-
-```bash
-export OPENROUTER_API_KEY=...
-
-# Two-call compatibility smoke test using the exact reasoning/provider settings.
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_smoke.yaml
-
-# 20 paired repetitions = 40 sender calls.
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_ck2_ck3.yaml
-```
-
-
-### Wording-control and third-model CK2 -> CK3 screens
-
-The sender-only reliance harness supports `condition_wording_variant:
-minimal_pair`. This keeps the convention text fixed while reducing the CK2 and
-CK3 meta-information to a closely matched contrast:
-
-- CK2: the sender has the convention, but its instructions do not establish
-  whether the other player has it.
-- CK3: the sender has the convention, and its instructions explicitly establish
-  that the other player has the same convention.
-
-Matched 20-pair wording controls are available for GPT-5.4, DeepSeek V4
-Flash, and Claude Sonnet 5.5:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_gpt_5_4_ck2_ck3_minimal_pair.yaml
-
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_deepseek_v4_flash_ck2_ck3_minimal_pair.yaml
-
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_sonnet_5_5_ck2_ck3_minimal_pair.yaml
-```
-
-A third-model screen uses Claude Sonnet 5.5 through OpenRouter with the
-Amazon Bedrock provider pinned. Run the two-call smoke test first, then the 20-pair
-screen:
-
-```bash
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_sonnet_5_5_smoke.yaml
-
-uv run hanabi-ck micro-pair \
-  configs/micro_sender_reliance_openrouter_sonnet_5_5_ck2_ck3.yaml
-```
-
-### Cross-model screen on the Rakuten OpenAI-compatible endpoint
-
-Three matched 5-repetition configs are provided for the currently available
-remote models:
-
-```bash
-export OPENAI_API_KEY=...
-
-uv run hanabi-ck micro-pair configs/micro_pair_probe_deepseek_v4_flash.yaml
-uv run hanabi-ck micro-pair configs/micro_pair_probe_rakutenai_3.yaml
-uv run hanabi-ck micro-pair configs/micro_pair_probe_glm_5_3.yaml
-```
-
-All three use the same scenario, condition order seed, action-order seeds, and
-probe design. Each screen makes 75 API calls. Compare
-`sender_probe_mapping_accuracy`, `sender_probe_partner_knowledge_accuracy`,
-`sender_convention_hint_rate`, and `sender_probe_knowledge_to_action_gap`
-before scaling the strongest candidate to 20 repetitions.
-
-The configs set
-`base_url: https://api-opensource-ai.mde.rakuten-it.com/v1`,
-`vary_api_seed: false`, and omit LM Studio/Qwen-specific `extra_body`
-arguments. If the endpoint rejects strict `json_schema` response formatting,
-set `structured_output: false` and rerun; parsing still requires valid JSON.
-
-## Common-knowledge ladder
-
-The initial conditions are:
-
-- `ck0`: no convention supplied.
-- `ck1_private`: convention supplied only to designated informed player(s);
-  the informed player is not told whether the partner received it. Full-game
-  configs default to player 0; micro configs can counterbalance this.
-- `ck2_shared`: convention supplied to all agents, but no statement about the
-  partner's information.
-- `ck3_mutual`: each agent is explicitly told the partner received the same
-  convention.
-- `ck_inf_common`: the convention is explicitly declared public/common knowledge.
-
-This is an **experimental prompt manipulation**, not a claim that arbitrary-depth
-epistemic common knowledge has been formally established inside the model.
-
-## Convention used in the starter experiment
-
-> If a player gives a rank hint that touches the receiver's newest card, the
-> receiver should interpret that newest card as intended to be played as soon as
-> it is safe to do so.
-
-You can replace the convention in YAML.
-
-## Output
-
-Each game writes one JSONL file. A turn record contains:
-
-- seed / game / condition
-- public game state
-- the acting player's exact observation
-- legal actions
-- indexed legal-action list, selected action index, and executed action
-- raw agent/API response and response channel (when applicable)
-- researcher-only true state
-- immediate physical outcome
-- epistemic play-safety status for play actions
-- optional probe payloads
-
-A `summary.json` is also produced for each experiment.
-
-## Inspect a game
-
-Use the compact inspector to review exactly what each agent could see and what
-it did:
-
-```bash
-uv run hanabi-ck inspect runs/llm_debug/ck0/seed_000000.jsonl
-uv run hanabi-ck inspect runs/llm_debug/ck_inf_common/seed_000000.jsonl
-```
-
-Add `--true-state` to show researcher-only hidden cards, or `--raw` to print
-the raw model response.
-
-## First LLM debug run
-
-`configs/llm_debug.yaml` is currently configured for
-`qwen/qwen3.8-27b`. Change the model identifier if your LM Studio server
-exposes a different model, then run:
-
-```bash
-uv run hanabi-ck run configs/llm_debug.yaml
-```
-
-This deliberately runs just one identical deck seed under `ck0` and
-`ck_inf_common` so the two traces can be inspected before scaling up.
-
-## Suggested first experiment
-
-Use the *same deck seeds* in every condition:
+Research configs normally use:
 
 ```yaml
-seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-conditions:
-  - ck0
-  - ck1_private
-  - ck2_shared
-  - ck3_mutual
-  - ck_inf_common
+agent_error_policy: abort
 ```
 
-Then compare:
+so malformed/API-failed actions are logged as invalid rather than silently
+replaced by gameplay.
 
-- final score
-- failed / perfect games
-- life losses
-- unsafe-play rate
-- successful-but-unsafe plays
-- hints used
-- successful plays per hint
-- invalid-action rate
-- cross-play compatibility
+## Observations and safety
 
-The important methodological point is that **score is downstream**. The log is
-designed so later versions can add explicit first-, second-, and higher-order
-belief probes without changing the engine.
+Hands are ordered:
+
+```text
+oldest -> newest
+0 1 2 3 4
+```
+
+The harness distinguishes physical success from epistemic justification.
+
+A card is **provably playable** only if every identity still compatible with the
+acting player's legal information is currently playable.
+
+This prevents lucky plays from being counted as justified reasoning.
+
+## Reproducibility
+
+The micro runners support:
+
+- paired repetitions;
+- deterministic legal-action shuffling;
+- deterministic condition-order randomization;
+- separate action/probe/intervention seed namespaces;
+- exact request-payload hashes;
+- raw API response logging;
+- Wilson intervals and paired transition summaries.
+
+Important controls and seed conventions are listed in
+[docs/experiments.md](docs/experiments.md).
 
 ## Repository layout
 
 ```text
 src/hanabi_ck/
-  actions.py       structured actions
-  engine.py        Hanabi rules/state
-  observations.py  no-hidden-information player views
-  conditions.py    CK prompt manipulations
-  agents.py        random / heuristic / LLM adapters
-  logging.py       JSONL instrumentation
-  metrics.py       aggregation
-  runner.py        experiment orchestration
-  cli.py           command-line entry point
+  engine.py              native Hanabi mechanics
+  backends.py            native/HLE backend boundary
+  agents.py              model adapters and shadow probes
+  scaffolds.py           raw/derived mechanical rendering
+  micro_scenarios.py     controlled diagnostic states
+  micro_runner.py        receiver-only micro experiments
+  pair_micro_runner.py   sender/receiver experiment orchestration
+  pair_analysis.py       pair-experiment aggregation
+  pair_interventions.py  intervention arm definitions/rendering
+  runner.py              full-game experiments
 
-configs/
-  smoke.yaml
-  llm_debug.yaml
-  lmstudio.yaml
-  micro_newest.yaml
-  micro_pair_smoke.yaml
-  micro_pair_pilot.yaml
-  micro_pair_newest.yaml
-
-tests/
-  test_engine.py
-  test_conditions.py
+configs/                 reproducible experiment configs
+tests/                   mechanics, adapters, runners, diagnostics
+docs/                    result memo, experiment guide, architecture, presentation
 ```
 
-## Next milestones
+## Next research target
 
-1. Extend shadow belief/intention probes to selected full-game turns.
-2. Add paired convention-conflict experiments.
-3. Add model × model cross-play matrices.
-4. Add controlled ablations of memory/history.
-5. Add exact epistemic-state annotations for carefully designed micro-Hanabi
-   scenarios.
+Before broadening the model matrix, replicate the mechanism in a mechanically
+distinct sender-reliance microstate.
+
+The next target should preserve:
+
+```text
+CK2 -> robust signal
+CK3 -> convention-dependent signal
+```
+
+but make the robust route safe through **direct positive information**, rather
+than the current negative-information deduction.
+
+That tests whether the scaffold/intervention result generalizes across
+mechanical reasoning structures.
