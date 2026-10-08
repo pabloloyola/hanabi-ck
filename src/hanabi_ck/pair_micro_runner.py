@@ -15,15 +15,9 @@ from .actions import Action
 from .agents import OpenAICompatibleAgent
 from .conditions import DEFAULT_CONVENTION, get_condition
 from .logging import JsonlLogger
-from .micro_runner import (
-    _agent_spec_for_sample,
-    _all_pairwise_comparisons,
-    _all_pairwise_hash_comparisons,
-    _comparisons_vs_baseline,
-    _payload_hash,
-)
+from .micro_runner import _agent_spec_for_sample, _payload_hash
 from .micro_scenarios import get_pair_micro_scenario
-from .pair_analysis import aggregate_pair_samples
+from .pair_analysis import aggregate_pair_samples, build_pairwise_metrics
 from .pair_interventions import (
     INTERVENTION_ARMS,
     _self_derived_intervention_instruction,
@@ -1343,171 +1337,15 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         ]
         aggregate_by_condition[condition_name] = aggregate_pair_samples(subset)
 
-    sender_convention_pairwise = _all_pairwise_comparisons(
+    pairwise_metrics = build_pairwise_metrics(
         all_samples,
         conditions,
-        field="sender_used_convention_hint",
-        valid_field="valid",
+        sender_only=sender_only,
+        epistemic_reliance_test=scenario.epistemic_reliance_test,
+        sender_probe=sender_probe,
+        sender_mechanical_probe=sender_mechanical_probe,
+        sender_intervention_arms=sender_intervention_arms,
     )
-    sender_epistemic_choice_pairwise = (
-        _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="sender_epistemic_choice_correct",
-            valid_field="valid",
-        )
-        if scenario.epistemic_reliance_test
-        else {}
-    )
-    receiver_pairwise = (
-        {}
-        if sender_only
-        else _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="receiver_selected_newest",
-            valid_field="valid",
-        )
-    )
-    safe_coordination_pairwise = (
-        {}
-        if sender_only
-        else _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="safe_coordination_success",
-            valid_field="valid",
-        )
-    )
-    convention_chain_pairwise = (
-        {}
-        if sender_only
-        else _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="convention_chain_success",
-            valid_field="valid",
-        )
-    )
-    sender_probe_identification_pairwise = (
-        _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="sender_probe_identified_convention_hint",
-            valid_field="sender_probe_valid",
-        )
-        if sender_probe
-        else {}
-    )
-    sender_probe_request_hash_pairwise = (
-        _all_pairwise_hash_comparisons(
-            all_samples,
-            conditions,
-            field="sender_probe_request_payload_hash",
-            valid_field="sender_probe_valid",
-        )
-        if sender_probe
-        else {}
-    )
-    sender_mechanical_probe_exact_pairwise = (
-        _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="sender_mechanical_probe_exact_correct",
-            valid_field="sender_mechanical_probe_valid",
-        )
-        if sender_mechanical_probe
-        else {}
-    )
-    sender_mechanical_probe_request_hash_pairwise = (
-        _all_pairwise_hash_comparisons(
-            all_samples,
-            conditions,
-            field="sender_mechanical_probe_request_payload_hash",
-            valid_field="sender_mechanical_probe_valid",
-        )
-        if sender_mechanical_probe
-        else {}
-    )
-    sender_intervention_convention_pairwise = (
-        _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="sender_intervention_used_convention_hint",
-            valid_field="sender_intervention_valid",
-        )
-        if sender_self_derived_intervention
-        else {}
-    )
-    sender_intervention_choice_pairwise = (
-        _all_pairwise_comparisons(
-            all_samples,
-            conditions,
-            field="sender_intervention_epistemic_choice_correct",
-            valid_field="sender_intervention_valid",
-        )
-        if sender_self_derived_intervention
-        else {}
-    )
-    sender_intervention_arm_comparisons_by_condition: dict[str, Any] = {}
-    if sender_intervention_arms:
-        for condition_name in conditions:
-            pseudo_samples: list[dict[str, Any]] = []
-            for sample in all_samples:
-                if sample.get("condition") != condition_name:
-                    continue
-                interventions = sample.get("sender_interventions") or {}
-                for arm in sender_intervention_arms:
-                    result = interventions.get(arm)
-                    if result is None:
-                        continue
-                    pseudo_samples.append(
-                        {
-                            "condition": arm,
-                            "repetition": sample["repetition"],
-                            "valid": result.get("valid") is True,
-                            "used_convention_hint": result.get(
-                                "used_convention_hint"
-                            ),
-                            "epistemic_choice_correct": result.get(
-                                "epistemic_choice_correct"
-                            ),
-                        }
-                    )
-            sender_intervention_arm_comparisons_by_condition[
-                condition_name
-            ] = {
-                "convention_hint": _all_pairwise_comparisons(
-                    pseudo_samples,
-                    sender_intervention_arms,
-                    field="used_convention_hint",
-                    valid_field="valid",
-                ),
-                "epistemic_choice": _all_pairwise_comparisons(
-                    pseudo_samples,
-                    sender_intervention_arms,
-                    field="epistemic_choice_correct",
-                    valid_field="valid",
-                ),
-            }
-
-    sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
-        all_samples,
-        conditions,
-        field="sender_request_payload_hash",
-        valid_field="valid",
-    )
-    receiver_request_hash_pairwise = (
-        {}
-        if sender_only
-        else _all_pairwise_hash_comparisons(
-            all_samples,
-            conditions,
-            field="receiver_request_payload_hash",
-            valid_field="valid",
-        )
-    )
-    baseline = "ck0" if "ck0" in conditions else conditions[0]
     summary = {
         "experiment": experiment,
         "scenario": scenario.name,
@@ -1531,69 +1369,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
         "sender_intervention_seed_offset": sender_intervention_seed_offset,
         "sender_intervention_order_seed": sender_intervention_order_seed,
         "aggregate_by_condition": aggregate_by_condition,
-        "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
-        "paired_sender_convention_hint_vs_baseline": _comparisons_vs_baseline(
-            sender_convention_pairwise,
-            baseline,
-        ),
-        "paired_sender_epistemic_choice_comparisons": (
-            sender_epistemic_choice_pairwise
-        ),
-        "paired_receiver_comparisons": receiver_pairwise,
-        "paired_receiver_vs_baseline": (
-            _comparisons_vs_baseline(receiver_pairwise, baseline)
-            if receiver_pairwise
-            else {}
-        ),
-        "paired_safe_coordination_comparisons": (
-            safe_coordination_pairwise
-        ),
-        "paired_safe_coordination_vs_baseline": (
-            _comparisons_vs_baseline(safe_coordination_pairwise, baseline)
-            if safe_coordination_pairwise
-            else {}
-        ),
-        "paired_convention_chain_comparisons": convention_chain_pairwise,
-        "paired_convention_chain_vs_baseline": (
-            _comparisons_vs_baseline(convention_chain_pairwise, baseline)
-            if convention_chain_pairwise
-            else {}
-        ),
-        "paired_sender_probe_identification_comparisons": (
-            sender_probe_identification_pairwise
-        ),
-        "paired_sender_probe_identification_vs_baseline": (
-            _comparisons_vs_baseline(
-                sender_probe_identification_pairwise,
-                baseline,
-            )
-            if sender_probe_identification_pairwise
-            else {}
-        ),
-        "paired_sender_probe_request_hash_comparisons": (
-            sender_probe_request_hash_pairwise
-        ),
-        "paired_sender_mechanical_probe_exact_comparisons": (
-            sender_mechanical_probe_exact_pairwise
-        ),
-        "paired_sender_mechanical_probe_request_hash_comparisons": (
-            sender_mechanical_probe_request_hash_pairwise
-        ),
-        "paired_sender_intervention_convention_hint_comparisons": (
-            sender_intervention_convention_pairwise
-        ),
-        "paired_sender_intervention_epistemic_choice_comparisons": (
-            sender_intervention_choice_pairwise
-        ),
-        "paired_sender_intervention_arm_comparisons_by_condition": (
-            sender_intervention_arm_comparisons_by_condition
-        ),
-        "paired_sender_request_hash_comparisons": (
-            sender_request_hash_pairwise
-        ),
-        "paired_receiver_request_hash_comparisons": (
-            receiver_request_hash_pairwise
-        ),
+        **pairwise_metrics,
         "samples": all_samples,
     }
     (output_root / "summary.json").write_text(
