@@ -1,3 +1,5 @@
+"""Definitions and prompt rendering for sender intervention ablations."""
+
 from __future__ import annotations
 
 import json
