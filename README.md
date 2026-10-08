@@ -317,6 +317,32 @@ uv run hanabi-ck micro-pair \
   configs/micro_sender_reliance_openrouter_gpt_5_4_raw_factorial_intervention.yaml
 ```
 
+### Current GPT-5.4 result
+
+The current result sequence is summarized in
+`docs/gpt54_scaffold_factorial_results.md`.
+
+The central finding is that the strong CK2 -> CK3 switch seen with the derived
+mechanical scaffold mostly collapses under the raw scaffold. Independent shadow
+probes show that GPT-5.4 can still reconstruct the relevant mechanics and
+partner-knowledge state. In the factorial intervention, CK2 policy accuracy was:
+
+```text
+fresh retry:       6/20
+mechanical only:  20/20
+epistemic only:    2/20
+both facts:       20/20
+```
+
+All four CK3 intervention arms remained 20/20 correct. The current
+interpretation is therefore an elicitable-capability/action-policy gap whose
+dominant bottleneck, in this scenario, is making mechanically derived hint
+consequences decision-salient.
+
+The next replication target is a mechanically distinct sender-reliance
+microstate in which the robust route is established through **direct positive
+information** rather than the current negative-information deduction.
+
 A Mycroft-like self-tracking scaffold is intentionally not implemented yet; it
 requires persistent per-agent belief/memory state rather than only a different
 single-turn rendering.
