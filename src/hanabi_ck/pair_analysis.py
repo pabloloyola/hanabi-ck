@@ -10,7 +10,12 @@ from collections import Counter
 from statistics import mean
 from typing import Any
 
-from .micro_runner import _wilson_interval
+from .micro_runner import (
+    _all_pairwise_comparisons,
+    _all_pairwise_hash_comparisons,
+    _comparisons_vs_baseline,
+    _wilson_interval,
+)
 from .pair_interventions import INTERVENTION_ARMS
 
 
@@ -605,4 +610,247 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             else None
         ),
         "sender_intervention_by_arm": intervention_by_arm,
+    }
+
+
+def build_pairwise_metrics(
+    all_samples: list[dict[str, Any]],
+    conditions: list[str],
+    *,
+    sender_only: bool,
+    epistemic_reliance_test: bool,
+    sender_probe: bool,
+    sender_mechanical_probe: bool,
+    sender_intervention_arms: list[str],
+) -> dict[str, Any]:
+    """Build pairwise condition/arm comparisons for a pair-micro run."""
+    sender_convention_pairwise = _all_pairwise_comparisons(
+        all_samples,
+        conditions,
+        field="sender_used_convention_hint",
+        valid_field="valid",
+    )
+    sender_epistemic_choice_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_epistemic_choice_correct",
+            valid_field="valid",
+        )
+        if epistemic_reliance_test
+        else {}
+    )
+    receiver_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="receiver_selected_newest",
+            valid_field="valid",
+        )
+    )
+    safe_coordination_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="safe_coordination_success",
+            valid_field="valid",
+        )
+    )
+    convention_chain_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="convention_chain_success",
+            valid_field="valid",
+        )
+    )
+    sender_probe_identification_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_probe_identified_convention_hint",
+            valid_field="sender_probe_valid",
+        )
+        if sender_probe
+        else {}
+    )
+    sender_probe_request_hash_pairwise = (
+        _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="sender_probe_request_payload_hash",
+            valid_field="sender_probe_valid",
+        )
+        if sender_probe
+        else {}
+    )
+    sender_mechanical_probe_exact_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_mechanical_probe_exact_correct",
+            valid_field="sender_mechanical_probe_valid",
+        )
+        if sender_mechanical_probe
+        else {}
+    )
+    sender_mechanical_probe_request_hash_pairwise = (
+        _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="sender_mechanical_probe_request_payload_hash",
+            valid_field="sender_mechanical_probe_valid",
+        )
+        if sender_mechanical_probe
+        else {}
+    )
+
+    intervention_enabled = bool(sender_intervention_arms)
+    sender_intervention_convention_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_intervention_used_convention_hint",
+            valid_field="sender_intervention_valid",
+        )
+        if intervention_enabled
+        else {}
+    )
+    sender_intervention_choice_pairwise = (
+        _all_pairwise_comparisons(
+            all_samples,
+            conditions,
+            field="sender_intervention_epistemic_choice_correct",
+            valid_field="sender_intervention_valid",
+        )
+        if intervention_enabled
+        else {}
+    )
+
+    sender_intervention_arm_comparisons_by_condition: dict[str, Any] = {}
+    if sender_intervention_arms:
+        for condition_name in conditions:
+            pseudo_samples: list[dict[str, Any]] = []
+            for sample in all_samples:
+                if sample.get("condition") != condition_name:
+                    continue
+                interventions = sample.get("sender_interventions") or {}
+                for arm in sender_intervention_arms:
+                    result = interventions.get(arm)
+                    if result is None:
+                        continue
+                    pseudo_samples.append(
+                        {
+                            "condition": arm,
+                            "repetition": sample["repetition"],
+                            "valid": result.get("valid") is True,
+                            "used_convention_hint": result.get(
+                                "used_convention_hint"
+                            ),
+                            "epistemic_choice_correct": result.get(
+                                "epistemic_choice_correct"
+                            ),
+                        }
+                    )
+            sender_intervention_arm_comparisons_by_condition[
+                condition_name
+            ] = {
+                "convention_hint": _all_pairwise_comparisons(
+                    pseudo_samples,
+                    sender_intervention_arms,
+                    field="used_convention_hint",
+                    valid_field="valid",
+                ),
+                "epistemic_choice": _all_pairwise_comparisons(
+                    pseudo_samples,
+                    sender_intervention_arms,
+                    field="epistemic_choice_correct",
+                    valid_field="valid",
+                ),
+            }
+
+    sender_request_hash_pairwise = _all_pairwise_hash_comparisons(
+        all_samples,
+        conditions,
+        field="sender_request_payload_hash",
+        valid_field="valid",
+    )
+    receiver_request_hash_pairwise = (
+        {}
+        if sender_only
+        else _all_pairwise_hash_comparisons(
+            all_samples,
+            conditions,
+            field="receiver_request_payload_hash",
+            valid_field="valid",
+        )
+    )
+
+    baseline = "ck0" if "ck0" in conditions else conditions[0]
+    return {
+        "paired_sender_convention_hint_comparisons": sender_convention_pairwise,
+        "paired_sender_convention_hint_vs_baseline": _comparisons_vs_baseline(
+            sender_convention_pairwise,
+            baseline,
+        ),
+        "paired_sender_epistemic_choice_comparisons": (
+            sender_epistemic_choice_pairwise
+        ),
+        "paired_receiver_comparisons": receiver_pairwise,
+        "paired_receiver_vs_baseline": (
+            _comparisons_vs_baseline(receiver_pairwise, baseline)
+            if receiver_pairwise
+            else {}
+        ),
+        "paired_safe_coordination_comparisons": safe_coordination_pairwise,
+        "paired_safe_coordination_vs_baseline": (
+            _comparisons_vs_baseline(safe_coordination_pairwise, baseline)
+            if safe_coordination_pairwise
+            else {}
+        ),
+        "paired_convention_chain_comparisons": convention_chain_pairwise,
+        "paired_convention_chain_vs_baseline": (
+            _comparisons_vs_baseline(convention_chain_pairwise, baseline)
+            if convention_chain_pairwise
+            else {}
+        ),
+        "paired_sender_probe_identification_comparisons": (
+            sender_probe_identification_pairwise
+        ),
+        "paired_sender_probe_identification_vs_baseline": (
+            _comparisons_vs_baseline(
+                sender_probe_identification_pairwise,
+                baseline,
+            )
+            if sender_probe_identification_pairwise
+            else {}
+        ),
+        "paired_sender_probe_request_hash_comparisons": (
+            sender_probe_request_hash_pairwise
+        ),
+        "paired_sender_mechanical_probe_exact_comparisons": (
+            sender_mechanical_probe_exact_pairwise
+        ),
+        "paired_sender_mechanical_probe_request_hash_comparisons": (
+            sender_mechanical_probe_request_hash_pairwise
+        ),
+        "paired_sender_intervention_convention_hint_comparisons": (
+            sender_intervention_convention_pairwise
+        ),
+        "paired_sender_intervention_epistemic_choice_comparisons": (
+            sender_intervention_choice_pairwise
+        ),
+        "paired_sender_intervention_arm_comparisons_by_condition": (
+            sender_intervention_arm_comparisons_by_condition
+        ),
+        "paired_sender_request_hash_comparisons": sender_request_hash_pairwise,
+        "paired_receiver_request_hash_comparisons": (
+            receiver_request_hash_pairwise
+        ),
     }
