@@ -426,6 +426,87 @@ probe_intended_card_index: 1
 probe_inferred_newest_target: false
 \end{lstlisting}
 
+\section{Current sender-reliance result: scaffold dependence and causal localization}
+
+The sender-reliance diagnostic asks P0 to choose between a robust hint and a
+convention-dependent hint while the physical Hanabi state stays fixed. The
+critical epistemic contrast is CK2 (receiver convention knowledge is not
+established to the sender) versus CK3 (receiver convention knowledge is
+explicitly established).
+
+\subsection{Derived versus raw mechanical support}
+
+The initial result used a derived mechanical scaffold that supplied deterministic
+hint consequences. Under minimal-pair CK wording, GPT-5.4 chose the convention
+hint in only 1/20 CK2 samples but in 20/20 CK3 samples. When those derived
+consequences were withheld, the raw run changed to 17/20 convention hints in CK2
+and 20/20 in CK3. The large policy switch therefore depends strongly on how
+mechanical consequences are made available.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{>{\bfseries}p{34mm}CCC}
+\toprule
+GPT-5.4 setup & CK2 convention & CK3 convention & Desired switches \\
+\midrule
+Derived, canonical & 4/20 & 20/20 & 16/20 \\
+Raw, canonical & 18/20 & 20/20 & 2/20 \\
+Derived, minimal pair & 1/20 & 20/20 & 19/20 \\
+Raw, minimal pair & 17/20 & 20/20 & 3/20 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Shadow probes}
+
+Two independent post-action probes separate constituent capabilities. The
+mechanical probe reconstructs touched cards and post-hint provably-playable
+indices; the epistemic probe identifies the convention hint and classifies
+receiver convention knowledge.
+
+In the matched combined-probe run, CK2 mechanical accuracy was 20/20 and
+epistemic accuracy was 20/20, while the direct CK2 action was correct only 3/20
+times. Thus 17/20 CK2 trials had both probes correct while the action was wrong.
+The mechanical-probe request payload matched exactly across CK2 and CK3 in all
+20 paired repetitions.
+
+\subsection{Factorial self-derived intervention}
+
+After the baseline action and both probes, four fresh action arms were tested.
+Each arm uses the model's own probe output rather than researcher ground truth.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{>{\bfseries}p{34mm}CCC}
+\toprule
+CK2 intervention & Convention hint & Correct policy & Baseline-failure rescue \\
+\midrule
+Fresh retry & 14/20 & 6/20 & 30\% \\
+Mechanical only & 0/20 & 20/20 & 100\% \\
+Epistemic only & 18/20 & 2/20 & 10\% \\
+Both facts & 0/20 & 20/20 & 100\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The fresh request hash matched the baseline request in 20/20 samples, so it is a
+clean second-sample control. Mechanical-only feedback was sufficient to rescue
+all CK2 failures, while epistemic-only feedback was not. All four CK3 arms
+remained 20/20 policy-correct.
+
+\begin{callout}[Current interpretation]
+GPT-5.4 has elicitable capability for both the relevant Hanabi mechanics and the
+partner-knowledge distinction, but its raw CK2 action policy usually fails to
+make the mechanical consequences decision-salient. Feeding back only its own
+mechanical derivation restores the appropriate CK2/CK3 policy distinction in
+this scenario.
+\end{callout}
+
+This is a causal localization of the scaffold effect, but not a claim about
+hidden internal chain-of-thought: the probes are separate stateless calls.
+
 \section{How to interpret future results}
 
 \begin{table}[H]
@@ -446,11 +527,16 @@ Score rises while unsafe-play rate rises & Risk/luck rather than coordination & 
 
 \subsection{Near-term roadmap}
 \begin{enumerate}
-\item Rerun the one-step micro test with interleaved conditions and inspect CK1/CK2 request-hash matches.
-\item Run the sender-receiver micro-pair experiment.
-\item Add matched wording and placebo-public-statement controls.
-\item Replicate with multiple models and both seat orders.
-\item Return to full games and cross-play only after the micro mechanisms are stable.
+\item Build a mechanically distinct CK2--CK3 reliance scenario where the robust
+route is established through direct positive information rather than the current
+negative-information deduction.
+\item Replicate the derived/raw scaffold contrast and factorial self-feedback
+intervention on that scenario with GPT-5.4.
+\item If the mechanism replicates, run the strongest contrasting models on both
+scenarios.
+\item Fit model $\times$ condition $\times$ scaffold $\times$ scenario analyses.
+\item Return to full sender--receiver chains and full-game cross-play only after
+the micro mechanism is stable across scenarios.
 \end{enumerate}
 
 \section{Useful commands}
@@ -466,7 +552,12 @@ uv run hanabi-ck run configs/llm_debug.yaml
 \end{lstlisting}
 
 \section*{Evidence note}
-The numerical results in this guide come from the 100-repetition \texttt{micro\_newest} summary. The interleaved-condition/request-hash controls and sender-receiver pair harness were implemented after that run and require fresh experiments.
+The guide contains two generations of evidence. The receiver-only chart comes
+from the earlier 100-repetition \texttt{micro\_newest} summary. The
+sender-reliance tables report the later GPT-5.4 derived/raw scaffold, shadow
+probe, self-derived intervention, and factorial intervention experiments.
+Repeated model calls are treated as paired descriptive samples rather than
+independent human subjects.
 
 \section*{Reference}
 Bard, N. et al. (2020). \emph{The Hanabi Challenge: A New Frontier for AI Research}. Artificial Intelligence, 280, 103216.
