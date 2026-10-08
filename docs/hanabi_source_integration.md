@@ -160,8 +160,8 @@ adapter/export layer rather than move its core experiments into that stack.
 - [x] Run the HLE parity suite on Apple Silicon macOS with the native HLE library built.
 - [x] Validate expanded parity coverage for discard-token recovery, life
       exhaustion, and full seeded trajectories through the final round.
-- [ ] Validate the newly added rank-5 token-recovery and 3-5 player parity
-      cases on the local HLE build.
+- [x] Validate rank-5 token-recovery and 3-5 player parity cases on the
+      local HLE build.
 
 ### Phase B — mechanical scaffold axis
 
@@ -246,6 +246,8 @@ that HLE and the native engine keep different post-terminal current-player
 cursors. This is not actionable game state, so parity now explicitly ends
 current-player/observation comparison once both backends report `done=True`.
 The corrected expanded suite was rerun successfully on the local Apple
-Silicon HLE build: all 11 then-current backend tests passed, including life
-exhaustion and three complete 2-player seeded trajectories. Additional rank-5
-and 3-5 player cases were added afterward and still require a local rerun.
+Silicon HLE build. After adding rank-5 token-recovery and 3-5 player coverage,
+the backend suite passed all 14 tests. The full repository suite at that
+milestone passed 81 tests. This includes life exhaustion, complete 2-player
+seeded trajectories, rank-5 information-token recovery, and 3-5 player parity
+coverage.
