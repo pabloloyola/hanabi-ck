@@ -1,3 +1,9 @@
+"""Aggregation and paired summaries for sender/receiver micro experiments.
+
+This module is intentionally free of API calls and game execution so result
+analysis can evolve independently from experiment orchestration.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
