@@ -2,231 +2,192 @@
 marp: true
 theme: default
 size: 16:9
-title: Section 12 — Careful interpretation
+title: Section 12 — Causal intervention and localization
 paginate: true
 style: |
-  section {
-    font-size: 28px;
-    padding: 44px 60px;
-  }
+  section { font-size: 28px; padding: 44px 60px; }
   h1 { font-size: 42px; margin-bottom: 0.55em; }
   h2 { font-size: 32px; }
-  table { font-size: 21px; }
-  pre, code { font-size: 20px; }
-  blockquote { font-size: 27px; }
+  table { font-size: 20px; }
+  pre, code { font-size: 19px; }
+  blockquote { font-size: 26px; }
 ---
 
-# 12. Careful interpretation
+# 12. Causal intervention and localization
 
-## The result is strong, but narrow
+## Feed the model its own facts
 
-The current evidence is compelling for one controlled diagnostic.
+After the baseline action and shadow probes, make a fresh action call.
 
-But the claim should stay precise.
+The intervention receives:
 
-We have not proven a general theory of model common knowledge.
+~~~text
+original raw prompt
++
+the model's own structured probe outputs
+~~~
 
-We have shown a behavioral dissociation in a deliberately constructed Hanabi signaling task.
-
----
-
-# What we can say
-
-A careful positive claim:
-
-> In this controlled scenario, GPT-5.4 robustly changes its sender policy when moving from unassured to assured receiver convention knowledge.
-
-And:
-
-> DeepSeek V4 Flash and Claude Sonnet 5.5 mostly do not make that policy adjustment under the same manipulation.
-
-This is the core result.
+Researcher ground truth is never substituted for a probe answer.
 
 ---
 
-# What we should not say
+# First intervention result
 
-Avoid these stronger claims:
+CK2:
 
-```text
-GPT-5.4 has formal common knowledge.
-DeepSeek cannot reason about partner knowledge.
-Sonnet does not understand conventions.
-```
+| Stage | Convention hint | Correct policy |
+|---|---:|---:|
+| raw baseline | 16/19 = 84.2% | 3/19 = 15.8% |
+| both self-derived facts | 1/18 = 5.6% | 17/18 = 94.4% |
 
-Those are too broad.
+Among baseline failures, 14/15 were rescued.
 
-The experiment measures policy sensitivity in a specific epistemic manipulation.
+Among failures where both probes were correct, 14/14 were rescued.
 
----
-
-# The right conceptual label
-
-The best current phrase is:
-
-```text
-partner-knowledge assurance
-```
-
-or:
-
-```text
-finite higher-order epistemic sensitivity
-```
-
-rather than simply:
-
-```text
-common knowledge
-```
-
-Common knowledge is the motivating concept, but CK2 → CK3 is a finite controlled contrast.
+CK3 stayed at ceiling.
 
 ---
 
-# Why CK2 → CK3 is not CK∞
+# But what caused the rescue?
 
-CK3 gives explicit assurance that the partner has the convention.
+The both-facts intervention confounds:
 
-CK∞ is a stronger public/common declaration.
+~~~text
+mechanical feedback
++
+epistemic feedback
++
+a fresh decision call
+~~~
 
-```text
-CK3: I know my partner knows C
-CK∞: public/common declaration of C
-```
-
-Our strongest result is about the CK2 → CK3 transition.
-
-So the paper language should reflect that.
-
----
-
-# What the result is not about
-
-This is not primarily a test of:
-
-- full-game Hanabi skill
-- long-horizon planning
-- memorized Hanabi conventions
-- raw card-counting ability
-- benchmark score maximization
-
-It is a test of whether an epistemic fact changes an action policy in a controlled communication problem.
+So we need a factorial control.
 
 ---
 
-# Why full-game score would be insufficient
+# Four intervention arms
 
-A full-game score can hide the relevant mechanism.
+~~~text
+fresh
+  original raw prompt again
 
-A model could score well while:
+mechanical
+  raw prompt + mechanical-probe output
 
-```text
-using conventions too aggressively
-ignoring partner uncertainty
-getting lucky because the partner happens to understand
-```
+epistemic
+  raw prompt + epistemic-probe output
 
-Or it could score poorly for unrelated reasons.
+both
+  raw prompt + both probe outputs
+~~~
 
-The micro-diagnostic isolates the policy decision we care about.
-
----
-
-# Repeated calls are not human subjects
-
-The counts are repeated model samples, not independent people.
-
-So p-values and confidence intervals should be treated as descriptive diagnostics.
-
-They help summarize separation.
-
-They do not automatically imply a population-level psychological claim.
-
-For stronger analysis, we should model repetition, prompt, scenario, and model family explicitly.
+Arm execution order is deterministically shuffled and logged.
 
 ---
 
-# Remaining confound: one scenario
+# Factorial CK2 result
 
-The strongest current result uses one carefully designed Hanabi state.
+In this run, the baseline CK2 action was wrong 20/20 times.
 
-That is good for interpretability.
+| Arm | Convention hint | Correct policy |
+|---|---:|---:|
+| fresh | 14/20 = 70% | 6/20 = 30% |
+| mechanical | 0/20 = 0% | 20/20 = 100% |
+| epistemic | 18/20 = 90% | 2/20 = 10% |
+| both | 0/20 = 0% | 20/20 = 100% |
 
-But it raises a question:
-
-```text
-Is the effect about the epistemic structure,
-or about this exact rank-1 / rank-2 construction?
-```
-
-We need scenario replications.
+This sharply localizes the rescue.
 
 ---
 
-# Remaining confound: provider behavior
+# Fresh is a real second-attempt control
 
-We also use different providers and routes:
+For CK2:
 
-```text
-OpenRouter
-Amazon Bedrock route
-hosted vLLM routes
-model-specific reasoning settings
-```
+~~~text
+fresh request hash == baseline request hash
+20 / 20
+~~~
 
-The harness logs these details.
+So fresh is another sample from the exact same request payload.
 
-But a mature study should replicate important runs across stable provider settings where possible.
+It improves from 0% to 30%, showing nondeterministic retry can help.
 
----
-
-# Remaining confound: custom engine
-
-Our custom harness gives us microstate control.
-
-But custom engines can contain subtle rule bugs.
-
-The best response is not to abandon the harness.
-
-It is to add reference validation:
-
-```text
-hanabi-ck experimental layer
-        +
-HLE-style parity tests for standard mechanics
-```
+But retry alone is nowhere near the mechanical intervention.
 
 ---
 
-# What makes the current result credible
+# Mechanical feedback is sufficient
 
-Despite the caveats, several things strengthen the result:
+~~~text
+mechanical-only: 20/20 correct
+both-facts:      20/20 correct
+epistemic-only:   2/20 correct
+~~~
 
-- paired CK2 / CK3 comparisons
-- matched action order within pairs
-- minimal-pair wording control
-- raw response logging
-- strict action validation
-- multiple model comparison
-- traces consistent with the behavioral story
-
-The effect is not a single fragile observation.
+There are zero paired disagreements between mechanical and both.
 
 ---
 
-# Recommended claim for a paper or talk
+# Paired contrasts
 
-> We introduce a Hanabi micro-diagnostic for partner-knowledge-sensitive signaling. In this diagnostic, GPT-5.4 strongly changes its hint choice when receiver convention knowledge becomes assured, while DeepSeek V4 Flash and Claude Sonnet 5.5 largely do not.
+CK2 exact paired discordances:
 
-That is precise, defensible, and still interesting.
+~~~text
+fresh vs mechanical:
+  14 favor mechanical, 0 favor fresh
+
+mechanical vs epistemic:
+  18 favor mechanical, 0 favor epistemic
+
+mechanical vs both:
+  0 discordant pairs
+~~~
+
+Two-sided exact paired probabilities are approximately 1.22e-4 and 7.63e-6
+for the first two contrasts.
+
+Treat them as descriptive diagnostics over repeated model calls.
+
+---
+
+# CK3 specificity control
+
+Every CK3 intervention arm stayed at ceiling:
+
+~~~text
+fresh       20/20 correct
+mechanical  20/20 correct
+epistemic   20/20 correct
+both        20/20 correct
+~~~
+
+Mechanical feedback is therefore not merely pushing the model toward rank 1.
+
+---
+
+# Current mechanistic picture
+
+~~~text
+mechanical capability      ✓
+epistemic capability       ✓
+
+raw CK2 policy             ✗
+
+surface mechanical facts
+at decision time
+          ↓
+CK2 policy                 ✓
+~~~
+
+The dominant bottleneck is **decision-salience of mechanical consequences**.
 
 ---
 
 # Section 12 takeaway
 
-> **The result is best interpreted as behavioral evidence of partner-knowledge-sensitive policy selection, not as proof of formal common knowledge.**
+> **Making GPT-5.4's own mechanical derivation explicit at decision time is
+> sufficient to restore the appropriate CK2/CK3 policy distinction.**
 
-That careful framing makes the project stronger, not weaker.
+Making the epistemic fact explicit by itself is not.
 
 ---
