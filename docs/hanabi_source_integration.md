@@ -207,6 +207,24 @@ Additional Phase-B diagnostics:
   its request payload should hash identically to the baseline request. Arm
   execution order is deterministically randomized and logged.
 
+Current empirical result on GPT-5.4:
+
+- the derived scaffold produces a strong CK2 -> CK3 sender-policy switch;
+- the raw scaffold largely collapses that switch by moving CK2 toward
+  convention reliance;
+- independent raw mechanical and epistemic probes are near/perfect on the
+  matched diagnostic even when the direct CK2 action is wrong;
+- in the four-arm self-derived intervention, mechanical-only feedback and
+  both-facts feedback restore CK2 policy accuracy to 20/20, while a fresh retry
+  reaches 6/20 and epistemic-only feedback reaches 2/20;
+- CK3 remains at ceiling across all intervention arms.
+
+The next replication target is a mechanically distinct sender-reliance
+microstate whose robust route is established by direct positive information
+rather than the current negative-information deduction. This is intended to
+test whether the scaffold/intervention effect generalizes across mechanical
+reasoning structures.
+
 Planned:
 
 - `self_tracking`: persistent model-maintained belief/memory state across
