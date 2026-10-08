@@ -14,8 +14,15 @@ is**, and **why the architecture looks the way it does**.
 | [hanabi_ck_harness_guide.tex](hanabi_ck_harness_guide.tex) | long-form illustrated technical guide |
 | [hanabi_ck_presentation.md](hanabi_ck_presentation.md) | presentation entry point and Sections 1–3 |
 
-Sections 4–14 of the presentation live in
-`hanabi_ck_presentation_section_*.md`.
+Sections 4–14 of the presentation live in standalone files. The current evidence
+sequence uses:
+
+- `hanabi_ck_presentation_section_09_main_cross_model_result.md`
+- `hanabi_ck_presentation_section_10_mechanical_scaffold_ablation.md`
+- `hanabi_ck_presentation_section_11_shadow_probes.md`
+- `hanabi_ck_presentation_section_12_causal_intervention.md`
+- `hanabi_ck_presentation_section_13_interpretation_next_replication.md`
+- `hanabi_ck_presentation_section_14_takeaways.md`
 
 ## Current evidence sequence
 
