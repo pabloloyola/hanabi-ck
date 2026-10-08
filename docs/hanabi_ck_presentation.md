@@ -51,11 +51,11 @@ _Working presentation outline_
 # Table of contents — evidence
 
 8. **The key CK2 → CK3 reliance scenario**
-9. **Main cross-model result**
-10. **Minimal-pair wording control**
-11. **What the traces show**
-12. **Careful interpretation**
-13. **Next experiments**
+9. **Cross-model result under derived mechanics**
+10. **Mechanical scaffold ablation**
+11. **Shadow probes and the capability-policy gap**
+12. **Causal intervention and localization**
+13. **Interpretation and next replication**
 14. **Takeaways**
 
 ---
@@ -685,4 +685,7 @@ For each section:
 3. Review and simplify the story.
 4. Commit the updated Markdown file.
 
-Next section to write: **4. Harness architecture**.
+Sections 4–14 are maintained as standalone presentation modules under
+`docs/hanabi_ck_presentation_section_*.md`. The current evidence sequence now
+includes the raw/derived scaffold ablation, shadow probes, self-derived
+intervention, and factorial localization.
