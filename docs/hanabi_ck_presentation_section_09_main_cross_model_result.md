@@ -2,265 +2,115 @@
 marp: true
 theme: default
 size: 16:9
-title: Section 9 — Main cross-model result
+title: Section 9 — Cross-model result under derived mechanics
 paginate: true
 style: |
-  section {
-    font-size: 28px;
-    padding: 44px 60px;
-  }
-  h1 {
-    font-size: 42px;
-    margin-bottom: 0.55em;
-  }
-  h2 {
-    font-size: 32px;
-  }
-  table {
-    font-size: 21px;
-  }
-  pre, code {
-    font-size: 20px;
-  }
-  blockquote {
-    font-size: 27px;
-  }
+  section { font-size: 28px; padding: 44px 60px; }
+  h1 { font-size: 42px; margin-bottom: 0.55em; }
+  h2 { font-size: 32px; }
+  table { font-size: 21px; }
+  pre, code { font-size: 20px; }
+  blockquote { font-size: 27px; }
 ---
 
-# 9. Main cross-model result
+# 9. Cross-model result under derived mechanics
 
-## The first headline
+## The first dissociation
 
-In the CK2 → CK3 sender-reliance scenario, models did **not** behave the same way.
+The original sender-reliance experiments used the **derived** mechanical
+scaffold: deterministic hint consequences were supplied to the model.
 
-GPT-5.4 showed a large CK-sensitive policy switch.
+Under that setup, GPT-5.4 showed a large CK2 → CK3 policy switch.
 
 DeepSeek V4 Flash and Claude Sonnet 5.5 mostly did not.
-
-```text
-GPT-5.4:   uncertainty about receiver knowledge changes the hint
-Others:    usually use the convention hint even under uncertainty
-```
 
 ---
 
 # What we measured
 
-For each model and condition, we measured whether the sender chose the convention-dependent hint.
+The sender chooses between:
 
-```text
-rank-1 hint = robust route
-rank-2 hint = convention-dependent route
-```
+~~~text
+rank-1 = robust route
+rank-2 = convention-dependent route
+~~~
 
-So the key rate is:
+The intended policy is:
 
-```text
-sender_convention_hint_rate
-```
-
-Higher means the sender relied on the convention.
+~~~text
+CK2 -> robust rank-1
+CK3 -> convention rank-2
+~~~
 
 ---
 
-# Canonical wording result
+# Canonical derived-scaffold result
 
 20 paired repetitions per model.
 
-| Model | CK2 convention hint | CK3 convention hint | Predicted switches |
+| Model | CK2 convention | CK3 convention | Desired switches |
 |---|---:|---:|---:|
 | GPT-5.4 | 4/20 = 20% | 20/20 = 100% | 16/20 |
 | DeepSeek V4 Flash | 20/20 = 100% | 20/20 = 100% | 0/20 |
 | Claude Sonnet 5.5 | 19/20 = 95% | 20/20 = 100% | 1/20 |
 
-The GPT-5.4 pattern is qualitatively different.
+Under derived mechanics, GPT-5.4 was qualitatively different.
 
 ---
 
-# Reading the table
+# Minimal-pair wording control
 
-The desired CK-sensitive behavior is:
+| Model | CK2 convention | CK3 convention | Desired switches |
+|---|---:|---:|---:|
+| GPT-5.4 | 1/20 = 5% | 20/20 = 100% | 19/20 |
+| DeepSeek V4 Flash | 18/18 = 100% | 18/19 = 94.7% | 0/17 |
+| Claude Sonnet 5.5 | 19/20 = 95% | 20/20 = 100% | 1/20 |
 
-```text
-CK2: receiver knowledge uncertain
-     → robust rank-1 hint
-
-CK3: receiver knowledge assured
-     → convention rank-2 hint
-```
-
-So the important event is a paired switch:
-
-```text
-CK2 robust  →  CK3 convention
-```
-
-GPT-5.4 switched this way in 16 of 20 canonical pairs.
+The GPT-5.4 derived-scaffold effect survives the wording control.
 
 ---
 
-# What GPT-5.4 did
+# But this is not the final story
 
-GPT-5.4 mostly treated CK2 and CK3 differently.
+The original interpretation was:
 
-```text
-CK2:
-  often chooses rank-1
-  avoids relying on unassured convention knowledge
+> GPT-5.4 conditions its signaling policy on partner-knowledge assurance.
 
-CK3:
-  consistently chooses rank-2
-  exploits the convention when receiver knowledge is assured
-```
+That statement is incomplete.
 
-This is the behavior the scenario was designed to detect.
+It describes behavior **given derived mechanical support**.
+
+The next experiment removes that support.
 
 ---
 
-# What DeepSeek did
+# Why mechanical scaffolding matters
 
-DeepSeek chose the convention-dependent hint in both conditions.
+The robust rank-1 route depends on a negative-information deduction:
 
-```text
-CK2: rank-2 convention hint
-CK3: rank-2 convention hint
-```
+~~~text
+rank-1 hint does not touch newest
+        ↓
+newest is not rank 1
+        ↓
+Y{1,2} becomes exactly Y2
+        ↓
+newest is uniquely provably playable
+~~~
 
-This means it used the convention even when the sender was not assured that the receiver had the convention.
-
-So DeepSeek did not show the intended CK2 → CK3 policy adjustment.
-
----
-
-# What Sonnet did
-
-Sonnet looked very similar to DeepSeek in the canonical run.
-
-```text
-CK2: 19/20 convention hint
-CK3: 20/20 convention hint
-```
-
-It did produce one CK2 robust choice.
-
-But the dominant pattern was still flat convention reliance across both conditions.
+So a raw action requires both mechanical consequence reasoning and
+epistemic/reliability reasoning.
 
 ---
 
-# Main visual intuition
+# Revised Section 9 claim
 
-```text
-Convention-hint rate
+> **Under a derived mechanical scaffold, GPT-5.4 shows a strong CK2 → CK3
+> sender-policy switch that DeepSeek and Sonnet largely do not.**
 
-CK2       CK3
+The phrase **under a derived mechanical scaffold** is now essential.
 
-GPT-5.4       20%  ─────────────▶ 100%
-DeepSeek     100%  ─────────────▶ 100%
-Sonnet        95%  ─────────────▶ 100%
-```
-
-Only GPT-5.4 shows the large jump we predicted.
-
----
-
-# Why this is not just convention knowledge
-
-All three models can use the convention under CK3.
-
-That is not the differentiator.
-
-The differentiator is CK2:
-
-```text
-When receiver convention knowledge is not assured,
-does the sender suppress convention-dependent behavior?
-```
-
-GPT-5.4 mostly does.
-
-DeepSeek and Sonnet mostly do not.
-
----
-
-# The result in one sentence
-
-> GPT-5.4 conditions its signaling policy on partner-knowledge assurance; DeepSeek V4 Flash and Claude Sonnet 5.5 mostly choose the convention-dependent signal regardless of that assurance.
-
-That is the central empirical result so far.
-
----
-
-# Statistical status
-
-The raw separation is large.
-
-For the canonical run, the predicted switch counts were:
-
-```text
-GPT-5.4:   16 / 20
-DeepSeek:   0 / 20
-Sonnet:     1 / 20
-```
-
-This is much larger than ordinary sampling noise in this small controlled setting.
-
-But we should still be careful: these are repeated model calls, not independent human subjects.
-
----
-
-# What claim this supports
-
-A careful claim:
-
-> In this controlled Hanabi signaling scenario, GPT-5.4 shows strong behavioral sensitivity to whether convention knowledge is merely available to the sender or explicitly known to be shared with the receiver.
-
-And the contrast:
-
-> DeepSeek V4 Flash and Claude Sonnet 5.5 largely fail to make that policy adjustment in the same scenario.
-
----
-
-# What claim this does not yet prove
-
-We should **not** say:
-
-```text
-GPT-5.4 has formal common knowledge.
-```
-
-We should also not say:
-
-```text
-DeepSeek and Sonnet cannot reason about partner knowledge at all.
-```
-
-The more precise statement is about **behavioral policy sensitivity** in a controlled CK2 → CK3 manipulation.
-
----
-
-# Why we needed the next control
-
-A possible objection:
-
-> Maybe the CK2 and CK3 prompts were worded differently enough that GPT-5.4 reacted to wording rather than epistemic structure.
-
-So the next step was a minimal-pair wording control.
-
-That control keeps the contrast very tight:
-
-```text
-CK2: instructions do not establish whether receiver has C
-CK3: instructions explicitly establish receiver has C
-```
-
-Section 10 covers that result.
-
----
-
-# Section 9 takeaway
-
-> **The main result is a cross-model dissociation: GPT-5.4 changes policy across CK2 and CK3, while DeepSeek and Sonnet mostly do not.**
-
-This makes the question concrete enough to test with wording controls, trace analysis, and scenario replications.
+Section 10 asks whether the GPT result survives when the model must derive the
+Hanabi consequences itself.
 
 ---
