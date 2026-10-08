@@ -1,3 +1,9 @@
+"""Orchestrate sender/receiver micro experiments.
+
+Keep experiment execution here; aggregation lives in :mod:`pair_analysis` and
+intervention rendering lives in :mod:`pair_interventions`.
+"""
+
 from __future__ import annotations
 
 import json
