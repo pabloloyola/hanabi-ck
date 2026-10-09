@@ -7,7 +7,7 @@
 </style></head>
 <body><main>
 <div class="eyebrow">Hanabi / cooperation under hidden information</div>
-<h1 id="title"></h1><p id="meta" class="muted"></p>
+<h1 id="title"></h1><p id="meta" class="muted"></p><p id="selectionnote" class="muted" hidden></p>
 <p class="intro">Build five color stacks together, from 1 to 5. You see your partner’s cards, but your own face away. On each turn, play a card, discard one, or spend a hint to reveal every card matching a color or rank.</p>
 <div class="controls"><button id="prev" aria-label="Previous turn">← Previous</button><button id="play" class="primary">Play replay</button><button id="next" aria-label="Next turn">Next →</button><span id="position" aria-live="polite"></span><button id="download">Download original log</button></div>
 <input id="timeline" type="range" min="0" value="0" aria-label="Turn timeline">
@@ -35,6 +35,7 @@ const fmt=x=>x==null?'Not recorded.':typeof x==='string'?x:JSON.stringify(x,null
 const label=a=>!a?'No action executed':a.type==='hint'?`Hint P${a.target}: ${a.attribute} ${a.value}`:`${a.type==='play'?'Play':'Discard'} card [${a.card_index}]`;
 let i=0,timer=null;
 $('title').textContent=data.title; document.title=data.title;
+if(data.selection_note){$('selectionnote').hidden=false;$('selectionnote').textContent=data.selection_note;}
 const first=records[0];$('meta').textContent=`${first.experiment??'Recorded game'} · ${first.condition??'Condition not recorded'} · seed ${first.seed??'?'} · ${first.mechanical_scaffold??'Scaffold not recorded'} scaffold · ${[...new Set(records.map(r=>r.agent?.model||r.agent?.name||'Agent'))].join(' / ')}`;
 $('timeline').max=records.length-1;
 function stop(){clearInterval(timer);timer=null;$('play').textContent='Play replay'}

@@ -12,6 +12,7 @@ def export_replay(
     output_path: str | Path,
     *,
     title: str = "Hanabi · Inside a cooperative decision",
+    selection_note: str | None = None,
 ) -> Path:
     source = Path(log_path).read_text(encoding="utf-8")
     records = []
@@ -36,7 +37,13 @@ def export_replay(
         raise ValueError("Export one game at a time; this log contains multiple games")
     # Script-safe JSON; model output and user text are never executable HTML.
     payload = json.dumps(
-        {"title": title, "source_name": Path(log_path).name, "source": source}, ensure_ascii=False
+        {
+            "title": title,
+            "source_name": Path(log_path).name,
+            "source": source,
+            "selection_note": selection_note,
+        },
+        ensure_ascii=False,
     )
     payload = (
         payload.replace("&", "\\u0026")

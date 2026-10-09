@@ -21,6 +21,13 @@ board phases checked across all 73 turns of an offline rule-based game.
 Browser visual QA remains to be completed locally; browser installation was
 unavailable in the implementation environment.
 
+Replay auditing and selection are available via `replay-audit` and
+`replay-select`. The ten-game OpenRouter reference config uses a separate
+`replay_reference_10` output directory. Select by median score, then median game
+length, then teaching coverage, then seed; retain exclusions in the audit report.
+The user's original successful LLM recording is on their Mac, not in this
+workspace. No paid reference games have been run by the assistant.
+
 The next science task is to design and
 implement the positive-information replication described in Section 13, with
 mechanical tests and smoke configs before any large paid run.
