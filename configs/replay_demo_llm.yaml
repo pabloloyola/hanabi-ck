@@ -1,0 +1,48 @@
+# One full LLM game. Set model/base_url for your endpoint before running.
+experiment: replay_demo_llm
+output_dir: runs
+num_players: 2
+seeds:
+- 0
+conditions:
+- ck3_mutual
+convention: If a player gives a rank hint that touches the receiver's newest card,
+  the receiver should interpret that newest card as intended to be played as soon
+  as it is safe to do so.
+agents:
+- type: openai_compatible
+  name: llm_A
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  temperature: 0.7
+  timeout_s: 300
+  max_tokens: 256
+  structured_output: true
+  extra_body:
+    top_p: 0.8
+    top_k: 20
+    presence_penalty: 1.5
+    seed: 0
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
+- type: openai_compatible
+  name: llm_B
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  temperature: 0.7
+  timeout_s: 300
+  max_tokens: 256
+  structured_output: true
+  extra_body:
+    top_p: 0.8
+    top_k: 20
+    presence_penalty: 1.5
+    seed: 0
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
+agent_error_policy: abort
+log_private_instructions: true
+log_raw_model_responses: true
+log_request_payloads: true

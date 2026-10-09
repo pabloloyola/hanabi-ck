@@ -10,7 +10,18 @@ changing experiments, documentation, or the pair runner.
 
 ## 1. Immediate goal
 
-The cleanup pass is complete and validated. The next task is to design and
+The cleanup pass is complete and validated. A pedagogical full-game replay
+exporter has also been added (`hanabi-ck replay LOG --output FILE`). See
+`docs/game_replay.md` for the offline rule-based demo and one-game LLM config.
+The viewer shows recorded player inputs, responses, legal actions, execution,
+before/after boards, and researcher-only data. It does not yet support the
+controlled micro-pair comparison. No new LLM game was run during implementation.
+Replay validation: **108 passed, 12 optional HLE skips**; DOM controls and both
+board phases checked across all 73 turns of an offline rule-based game.
+Browser visual QA remains to be completed locally; browser installation was
+unavailable in the implementation environment.
+
+The next science task is to design and
 implement the positive-information replication described in Section 13, with
 mechanical tests and smoke configs before any large paid run.
 

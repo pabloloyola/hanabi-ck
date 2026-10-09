@@ -23,6 +23,7 @@ class AgentDecision:
     api_response: dict[str, Any] | None = None
     parse_error: str | None = None
     fallback_used: bool = False
+    request_payload: dict[str, Any] | None = None
 
 
 @dataclass
@@ -1134,6 +1135,7 @@ indices in ascending order. Do not explain your answer."""
     ) -> AgentDecision:
         raw = ""
         data: dict[str, Any] | None = None
+        payload: dict[str, Any] | None = None
         try:
             payload = self._request_payload(
                 observation,
@@ -1165,6 +1167,7 @@ indices in ascending order. Do not explain your answer."""
                 raw_response=raw,
                 response_channel=response_channel,
                 api_response=data,
+                request_payload=payload,
             )
         except Exception as exc:
             return AgentDecision(
@@ -1176,6 +1179,7 @@ indices in ascending order. Do not explain your answer."""
                     else None
                 ),
                 api_response=data,
+                request_payload=payload,
                 parse_error=f"{type(exc).__name__}: {exc}",
                 fallback_used=False,
             )

@@ -211,6 +211,12 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                                 if cfg.get("log_private_instructions", True)
                                 else None
                             ),
+                            "request_payload": (
+                                decision.request_payload
+                                if cfg.get("log_request_payloads", True)
+                                and cfg.get("log_private_instructions", True)
+                                else None
+                            ),
                             "observation": observation.to_dict(),
                             "legal_actions": [a.to_dict() for a in legal],
                             "raw_response": (
@@ -278,6 +284,12 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                         if cfg.get("log_private_instructions", True)
                         else None
                     ),
+                    "request_payload": (
+                        decision.request_payload
+                        if cfg.get("log_request_payloads", True)
+                        and cfg.get("log_private_instructions", True)
+                        else None
+                    ),
                     "observation": observation.to_dict(),
                     "legal_actions": [a.to_dict() for a in legal],
                     "model_action_index": decision.action_index,
@@ -296,6 +308,9 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                         else None
                     ),
                     "researcher_true_state_before": true_state_before,
+                    "researcher_true_state_after": game.true_state(),
+                    "observation_after": game.observe(p).to_dict(),
+                    "game_done": game.done,
                     "outcome": result.outcome,
                     "probes": {},
                 }

@@ -7,6 +7,7 @@ from .api_check import check_openai_compatible_api, format_api_check
 from .inspection import inspect_log
 from .micro_runner import run_micro_experiment
 from .pair_micro_runner import run_pair_micro_experiment
+from .replay import export_replay
 from .runner import run_experiment
 
 
@@ -56,6 +57,11 @@ def main() -> None:
         action="store_true",
         help="Also print raw model responses",
     )
+
+    replay = sub.add_parser("replay", help="Export a full-game JSONL log to an offline HTML replay")
+    replay.add_argument("log")
+    replay.add_argument("--output", "-o", required=True, help="Destination HTML file")
+    replay.add_argument("--title", default="Hanabi · Inside a cooperative decision")
 
     args = parser.parse_args()
 
@@ -150,6 +156,8 @@ def main() -> None:
     elif args.command == "api-check":
         report = check_openai_compatible_api(args.config)
         print(format_api_check(report))
+    elif args.command == "replay":
+        print(export_replay(args.log, args.output, title=args.title))
     elif args.command == "inspect":
         inspect_log(
             args.log,

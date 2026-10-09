@@ -6,3 +6,5 @@ runs/
 *.pyc
 .DS_Store
 .vendor/
+
+demos/*.html

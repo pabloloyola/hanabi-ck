@@ -1,0 +1,12 @@
+# Offline mechanics demonstration; these are rule-based agents, not LLMs.
+experiment: replay_demo_simple
+output_dir: runs
+num_players: 2
+seeds: [0]
+conditions: [ck0]
+agents:
+  - {type: simple, name: Rule-based A}
+  - {type: simple, name: Rule-based B}
+log_private_instructions: true
+log_raw_model_responses: true
+log_request_payloads: true
