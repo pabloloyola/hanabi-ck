@@ -2,27 +2,28 @@
 
 **Repository:** `pabloloyola/hanabi-ck`  
 **Branch:** `main`  
-**HEAD at handoff:** `4a07af3aa2d750e2cfe005cfc062cc8eed19998b`  
-**Date:** 2026-10-08
+**Original handoff HEAD:** `4a07af3aa2d750e2cfe005cfc062cc8eed19998b`  
+**Updated:** 2026-10-09
 
 This file is the starting point for a new ChatGPT session. Read it before
 changing experiments, documentation, or the pair runner.
 
 ## 1. Immediate goal
 
-We deliberately paused new experiments to do a cleanup pass.
+The cleanup pass is complete and validated. The next task is to design and
+implement the positive-information replication described in Section 13, with
+mechanical tests and smoke configs before any large paid run.
 
-The current priority is:
+Latest validation:
 
-1. validate the recent refactor;
-2. simplify code where it reduces duplication without changing experiment
-   semantics;
-3. keep the documentation concise and non-redundant;
-4. only after that implement the next positive-information replication
-   scenario.
+- User's Apple Silicon environment: original 89-test suite passed.
+- Cleanup environment: **97 passed, 12 skipped** (HLE is not installed here).
+- Twenty offline regression cases reproduce the pre-cleanup runner's request
+  traces, JSONL logs, and full summaries exactly. No model API calls were made.
 
-Do **not** start another expensive model run until the cleanup/refactor passes
-the local test suite.
+The 12 skips concern optional HLE integration; this cleanup does not modify
+backend or engine code. The next positive-information scenario has not yet been
+implemented or run.
 
 ## 2. Research question
 
@@ -252,6 +253,9 @@ src/hanabi_ck/
   pair_micro_runner.py
       orchestration of sender/receiver runs, probes, interventions
 
+  pair_execution.py
+      optional shadow-probe execution and one intervention arm
+
   pair_analysis.py
       pair-experiment aggregation and pairwise summaries
 
@@ -265,115 +269,45 @@ src/hanabi_ck/
 The cleanup pass already moved substantial analysis/intervention logic out of
 `pair_micro_runner.py`.
 
-Current approximate sizes at handoff:
+Current module sizes after cleanup:
 
 ```text
-pair_micro_runner.py   ~1380 lines
-pair_analysis.py        ~857 lines
-pair_interventions.py    ~53 lines
-README.md               ~317 lines
+pair_micro_runner.py   ~956 lines
+pair_execution.py      ~431 lines
+pair_analysis.py       ~847 lines
 ```
 
-Recent refactor commits include:
+## 8. Completed cleanup and validation
+
+- Moved mechanical and epistemic probe execution into `pair_execution.py`, with
+  named, typed results and unchanged disabled/invalid defaults.
+- Moved one-arm intervention execution into the same module. Condition and arm
+  shuffling remain in the orchestrator, preserving RNG namespaces and timing.
+- Shared probe/intervention record fields across sender-only and full-pair runs.
+- Retained all historical `both` intervention aliases and logging controls.
+- Shared legacy/factorial transition labels in `pair_analysis.py`.
+
+Regression tests live in `tests/test_pair_execution_regression.py`. Their golden
+fixture was recorded from the original `9d18ede` runner and analysis modules,
+not regenerated from the refactored code. The cases include:
 
 ```text
-262803ee27  Extract pair-micro aggregation into analysis module
-269dd78356  Extract pair intervention prompt helpers
-e0d61d5bc0  Use extracted pair analysis and intervention modules
-75472b84ed  Move pairwise result construction into analysis module
-83f945a114  Delegate pairwise summaries to analysis module
-20bb3dfd93  Test extracted pair analysis and intervention modules
+sender-only and full sender/receiver
+raw and derived scaffolds; canonical and minimal-pair wording
+full CK ladder; shuffled and unshuffled legal actions
+fixed and varied API seeds
+no probes; either probe alone; legacy both-only and factorial interventions
+raw-response logging disabled
+invalid mechanical/epistemic probes; incorrect mechanical derivation
+invalid baseline/receiver/intervention actions; safe-baseline fallback
 ```
 
-The intent is architectural separation, not behavior change.
+Preserve this regression fixture when changing architecture. An intentional
+experiment-semantics change should get separate expectations and documentation.
+Do not casually update the golden hashes to silence a failure.
 
-## 8. Cleanup status and next code work
-
-The code is much better than before, but the cleanup is **not finished**.
-
-Highest-value next steps:
-
-### A. Run tests locally first
-
-From a fresh pull:
-
-```bash
-git pull
-uv run pytest
-```
-
-Also useful:
-
-```bash
-uv run pytest tests/test_pair_micro_runner.py -v
-uv run pytest tests/test_agents.py -v
-uv run pytest tests/test_backends.py -v
-```
-
-Do not assume the refactor is safe until this passes locally. There is no useful
-CI status recorded at this handoff.
-
-Historical validated milestone before the latest cleanup:
-
-```text
-HLE/backend suite: 14 passed
-full repository:   81 passed
-```
-
-The latest extraction/refactor needs a fresh local full-suite confirmation.
-
-### B. Continue simplifying pair_micro_runner.py
-
-Good extraction candidates, in order:
-
-1. **probe execution**
-   - mechanical shadow-probe execution
-   - epistemic shadow-probe execution
-   - conversion of decisions into normalized result dictionaries
-
-2. **intervention execution**
-   - run one intervention arm
-   - run/shuffle all arms
-   - build legacy compatibility aliases only if still needed
-
-3. **record construction**
-   - sender-only record builder
-   - full sender/receiver record builder
-   - shared probe/intervention fields
-
-Avoid a giant class hierarchy. Small pure helpers/dataclasses are preferable.
-
-### C. Simplify pair_analysis.py
-
-It is now isolated, but still large.
-
-Good targets:
-
-- shared rate/count helper;
-- shared transition-count helper;
-- intervention-arm aggregation helper;
-- probe aggregation helper;
-- explicit typed result structures only where they improve readability.
-
-Do not rename public summary fields during this pass unless tests and docs are
-updated together. Existing run-analysis scripts depend on those names.
-
-### D. Preserve semantics
-
-Refactor only. Do not change:
-
-- request prompts;
-- request ordering;
-- seeds;
-- action order;
-- condition order;
-- probe timing;
-- intervention timing;
-- logged field names;
-- aggregate metric definitions.
-
-A cleanup commit should ideally make old configs produce structurally identical
-summaries apart from intentionally added metadata.
+No prompts, seeds, request ordering, action ordering, public result fields, or
+aggregate metric definitions changed in this cleanup.
 
 ## 9. Documentation cleanup status
 
@@ -587,14 +521,9 @@ harder to explain as an artifact of one negative-information deduction.
 
 ## 14. How to start the next chat
 
-Suggested first message to the new assistant:
-
-> Read `HANDOFF.md`, `docs/README.md`, and
-> `docs/gpt54_scaffold_factorial_results.md`. We are in a cleanup/refactor
-> phase. First verify the current refactor with the local tests, then simplify
-> `pair_micro_runner.py` and `pair_analysis.py` without changing experiment
-> semantics. Do not start the positive-information replication until cleanup is
-> validated.
-
-When the cleanup is complete, update this handoff or replace it with a shorter
-current-status note.
+Read `HANDOFF.md`, `docs/README.md`, and
+`docs/gpt54_scaffold_factorial_results.md`. Cleanup has passed the local suite
+and offline regression comparison. Proceed with the positive-information
+replication in Section 13: establish and test the microstate's mechanics first,
+then prepare derived/raw minimal-pair smoke configs. Do not add another shadow
+probe to the old scenario or start a large paid run before a smoke check.

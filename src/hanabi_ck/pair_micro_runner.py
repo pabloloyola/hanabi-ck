@@ -18,11 +18,13 @@ from .logging import JsonlLogger
 from .micro_runner import _agent_spec_for_sample, _payload_hash
 from .micro_scenarios import get_pair_micro_scenario
 from .pair_analysis import aggregate_pair_samples, build_pairwise_metrics
-from .pair_interventions import (
-    INTERVENTION_ARMS,
-    _self_derived_intervention_instruction,
+from .pair_execution import (
+    _hint_label,
+    _run_sender_epistemic_probe,
+    _run_sender_intervention_arm,
+    _run_sender_mechanical_probe,
 )
-from .scaffolds import normalize_mechanical_scaffold, render_hint_effects
+from .pair_interventions import INTERVENTION_ARMS
 from .runner import (
     ERROR_POLICIES,
     _build_agent,
@@ -30,6 +32,7 @@ from .runner import (
     _resolve_agent_decision,
     load_config,
 )
+from .scaffolds import normalize_mechanical_scaffold, render_hint_effects
 
 
 def _shuffle_actions(
@@ -42,12 +45,6 @@ def _shuffle_actions(
     if enabled:
         random.Random(seed).shuffle(out)
     return out
-
-
-def _hint_label(action: Action) -> str:
-    if action.type != "hint":
-        return action.type
-    return f"{action.attribute}={action.value}"
 
 
 def _expected_receiver_convention_knowledge(condition: str) -> str:
@@ -366,18 +363,6 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 else None
             )
 
-            sender_mechanical_probe_seed: int | None = None
-            sender_mechanical_probe_request_hash: str | None = None
-            sender_mechanical_probe_valid = False
-            sender_mechanical_probe_error: str | None = None
-            sender_mechanical_probe_effects: list[dict[str, Any]] | None = None
-            sender_mechanical_probe_exact_correct: bool | None = None
-            sender_mechanical_probe_robust_effect_correct: bool | None = None
-            sender_mechanical_probe_convention_effect_correct: bool | None = None
-            sender_mechanical_probe_raw_response: str | None = None
-            sender_mechanical_probe_response_channel: str | None = None
-            sender_mechanical_probe_api_response: dict[str, Any] | None = None
-
             if sender_action is None:
                 record = {
                     "event_kind": "micro_pair_sample",
@@ -397,159 +382,51 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 all_samples.append(record)
                 continue
 
-            if sender_mechanical_probe:
-                sender_mechanical_probe_seed = (
-                    sender_mechanical_probe_seed_offset + sender_seed
-                )
-                sender_mechanical_probe_spec = _agent_spec_for_sample(
-                    sender_spec_base,
-                    sample_seed=sender_mechanical_probe_seed,
-                    vary_api_seed=vary_api_seed,
-                )
-                sender_mechanical_probe_agent = _build_agent(
-                    sender_mechanical_probe_spec,
-                    seed=sender_mechanical_probe_seed,
-                )
-                if not isinstance(
-                    sender_mechanical_probe_agent,
-                    OpenAICompatibleAgent,
-                ):
-                    raise RuntimeError(
-                        "sender mechanical shadow probe requires "
-                        "OpenAICompatibleAgent"
-                    )
+            (
+                sender_mechanical_probe_seed,
+                sender_mechanical_probe_request_hash,
+                sender_mechanical_probe_valid,
+                sender_mechanical_probe_error,
+                sender_mechanical_probe_effects,
+                sender_mechanical_probe_exact_correct,
+                sender_mechanical_probe_robust_effect_correct,
+                sender_mechanical_probe_convention_effect_correct,
+                sender_mechanical_probe_raw_response,
+                sender_mechanical_probe_response_channel,
+                sender_mechanical_probe_api_response,
+            ) = _run_sender_mechanical_probe(
+                sender_mechanical_probe=sender_mechanical_probe,
+                sender_mechanical_probe_seed_offset=sender_mechanical_probe_seed_offset,
+                sender_seed=sender_seed,
+                sender_spec_base=sender_spec_base,
+                vary_api_seed=vary_api_seed,
+                scenario=scenario,
+                mechanical_probe_candidates=mechanical_probe_candidates,
+                mechanical_probe_expected_effects=mechanical_probe_expected_effects,
+                robust_hint_index=robust_hint_index,
+                sender_convention_hint_index=sender_convention_hint_index,
+            )
 
-                sender_mechanical_probe_request_hash = _payload_hash(
-                    sender_mechanical_probe_agent._sender_mechanical_probe_payload(
-                        scenario.sender_observation,
-                        mechanical_probe_candidates,
-                    )
-                )
-                mechanical_probe_decision = (
-                    sender_mechanical_probe_agent.probe_sender_mechanics(
-                        scenario.sender_observation,
-                        mechanical_probe_candidates,
-                    )
-                )
-                sender_mechanical_probe_valid = (
-                    mechanical_probe_decision.parse_error is None
-                    and mechanical_probe_decision.hint_effects is not None
-                )
-                sender_mechanical_probe_error = (
-                    mechanical_probe_decision.parse_error
-                )
-                sender_mechanical_probe_effects = (
-                    mechanical_probe_decision.hint_effects
-                )
-                sender_mechanical_probe_raw_response = (
-                    mechanical_probe_decision.raw_response
-                )
-                sender_mechanical_probe_response_channel = (
-                    mechanical_probe_decision.response_channel
-                )
-                sender_mechanical_probe_api_response = (
-                    mechanical_probe_decision.api_response
-                )
-
-                if sender_mechanical_probe_valid:
-                    assert sender_mechanical_probe_effects is not None
-                    expected_by_index = {
-                        int(effect["action_index"]): effect
-                        for effect in mechanical_probe_expected_effects
-                    }
-                    observed_by_index = {
-                        int(effect["action_index"]): effect
-                        for effect in sender_mechanical_probe_effects
-                    }
-
-                    def _mechanical_effect_matches(action_index: int) -> bool:
-                        expected = expected_by_index[action_index]
-                        observed = observed_by_index.get(action_index)
-                        return (
-                            observed is not None
-                            and observed["touched_indices"]
-                            == expected["touched_indices"]
-                            and observed[
-                                "receiver_provably_playable_indices_after_hint"
-                            ]
-                            == expected[
-                                "receiver_provably_playable_indices_after_hint"
-                            ]
-                        )
-
-                    assert robust_hint_index is not None
-                    sender_mechanical_probe_robust_effect_correct = (
-                        _mechanical_effect_matches(robust_hint_index)
-                    )
-                    sender_mechanical_probe_convention_effect_correct = (
-                        _mechanical_effect_matches(
-                            sender_convention_hint_index
-                        )
-                    )
-                    sender_mechanical_probe_exact_correct = (
-                        sender_mechanical_probe_robust_effect_correct
-                        and sender_mechanical_probe_convention_effect_correct
-                    )
-
-            sender_probe_seed: int | None = None
-            sender_probe_request_hash: str | None = None
-            sender_probe_valid = False
-            sender_probe_error: str | None = None
-            sender_probe_convention_hint_index: int | None = None
-            sender_probe_receiver_knowledge: str | None = None
-            sender_probe_raw_response: str | None = None
-            sender_probe_response_channel: str | None = None
-            sender_probe_api_response: dict[str, Any] | None = None
-
-            if sender_probe:
-                sender_probe_seed = sender_probe_seed_offset + sender_seed
-                sender_probe_spec = _agent_spec_for_sample(
-                    sender_spec_base,
-                    sample_seed=sender_probe_seed,
-                    vary_api_seed=vary_api_seed,
-                )
-                sender_probe_agent = _build_agent(
-                    sender_probe_spec,
-                    seed=sender_probe_seed,
-                )
-                if not isinstance(
-                    sender_probe_agent,
-                    OpenAICompatibleAgent,
-                ):
-                    raise RuntimeError(
-                        "sender shadow probe requires OpenAICompatibleAgent"
-                    )
-                sender_probe_request_hash = _payload_hash(
-                    sender_probe_agent._sender_epistemic_probe_payload(
-                        scenario.sender_observation,
-                        sender_condition_instruction,
-                        scenario.sender_goal,
-                        sender_hint_effects_for_prompt,
-                    )
-                )
-                probe_decision = sender_probe_agent.probe_sender_epistemics(
-                    scenario.sender_observation,
-                    sender_condition_instruction,
-                    scenario.sender_goal,
-                    sender_hint_effects_for_prompt,
-                )
-                sender_probe_valid = (
-                    probe_decision.parse_error is None
-                    and probe_decision.convention_hint_index is not None
-                    and probe_decision.receiver_convention_knowledge is not None
-                )
-                sender_probe_error = probe_decision.parse_error
-                sender_probe_convention_hint_index = (
-                    probe_decision.convention_hint_index
-                )
-                sender_probe_receiver_knowledge = (
-                    probe_decision.receiver_convention_knowledge
-                )
-                sender_probe_raw_response = probe_decision.raw_response
-                sender_probe_response_channel = (
-                    probe_decision.response_channel
-                )
-                sender_probe_api_response = probe_decision.api_response
+            (
+                sender_probe_seed,
+                sender_probe_request_hash,
+                sender_probe_valid,
+                sender_probe_error,
+                sender_probe_convention_hint_index,
+                sender_probe_receiver_knowledge,
+                sender_probe_raw_response,
+                sender_probe_response_channel,
+                sender_probe_api_response,
+            ) = _run_sender_epistemic_probe(
+                sender_probe=sender_probe,
+                sender_probe_seed_offset=sender_probe_seed_offset,
+                sender_seed=sender_seed,
+                sender_spec_base=sender_spec_base,
+                vary_api_seed=vary_api_seed,
+                scenario=scenario,
+                sender_condition_instruction=sender_condition_instruction,
+                sender_hint_effects_for_prompt=sender_hint_effects_for_prompt,
+            )
 
             expected_probe_hint_index = (
                 -1
@@ -623,220 +500,172 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
             ).shuffle(sender_intervention_order)
 
             for intervention_arm in sender_intervention_order:
-                arm_result: dict[str, Any] = {
-                    "enabled": True,
-                    "valid": False,
-                    "error": None,
-                    "seed": None,
-                    "instruction_hash": None,
-                    "request_payload_hash": None,
-                    "model_action_index": None,
-                    "action": None,
-                    "hint_label": None,
-                    "used_convention_hint": None,
-                    "used_robust_hint": None,
-                    "epistemic_choice_correct": None,
-                    "response_channel": None,
-                    "raw_response": None,
-                    "api_response": None,
-                }
-
-                prerequisite_ok = True
-                if (
-                    intervention_arm in {"mechanical", "both"}
-                    and not sender_mechanical_probe_valid
-                ):
-                    prerequisite_ok = False
-                    arm_result["error"] = "mechanical_probe_invalid"
-                if (
-                    intervention_arm in {"epistemic", "both"}
-                    and not sender_probe_valid
-                ):
-                    prerequisite_ok = False
-                    arm_result["error"] = (
-                        "joint_probe_invalid"
-                        if intervention_arm == "both"
-                        else "epistemic_probe_invalid"
-                    )
-
-                if prerequisite_ok:
-                    intervention_instruction = (
-                        _self_derived_intervention_instruction(
-                            sender_instruction,
-                            arm=intervention_arm,
-                            mechanical_effects=(
-                                sender_mechanical_probe_effects
-                                if intervention_arm in {"mechanical", "both"}
-                                else None
-                            ),
-                            convention_hint_index=(
-                                sender_probe_convention_hint_index
-                                if intervention_arm in {"epistemic", "both"}
-                                else None
-                            ),
-                            receiver_convention_knowledge=(
-                                sender_probe_receiver_knowledge
-                                if intervention_arm in {"epistemic", "both"}
-                                else None
-                            ),
-                        )
-                    )
-                    arm_result["instruction_hash"] = _hash_text(
-                        intervention_instruction
-                    )
-                    arm_seed = (
-                        sender_intervention_seed_offset
-                        + arm_seed_slot[intervention_arm] * 1_000_000
-                        + sender_seed
-                    )
-                    arm_result["seed"] = arm_seed
-                    intervention_spec = _agent_spec_for_sample(
-                        sender_spec_base,
-                        sample_seed=arm_seed,
-                        vary_api_seed=vary_api_seed,
-                    )
-                    intervention_agent = _build_agent(
-                        intervention_spec,
-                        seed=arm_seed,
-                    )
-                    if not isinstance(
-                        intervention_agent,
-                        OpenAICompatibleAgent,
-                    ):
-                        raise RuntimeError(
-                            "sender intervention requires "
-                            "OpenAICompatibleAgent"
-                        )
-
-                    arm_result["request_payload_hash"] = _payload_hash(
-                        intervention_agent._request_payload(
-                            scenario.sender_observation,
-                            sender_actions,
-                            intervention_instruction,
-                        )
-                    )
-                    intervention_decision = intervention_agent.act(
-                        scenario.sender_observation,
-                        sender_actions,
-                        intervention_instruction,
-                    )
-                    intervention_action, _ = _resolve_agent_decision(
-                        intervention_decision,
-                        error_policy=error_policy,
-                        observation=scenario.sender_observation,
-                        legal_actions=sender_actions,
-                    )
-                    arm_result["error"] = intervention_decision.parse_error
-                    arm_result["raw_response"] = (
-                        intervention_decision.raw_response
-                    )
-                    arm_result["response_channel"] = (
-                        intervention_decision.response_channel
-                    )
-                    arm_result["api_response"] = (
-                        intervention_decision.api_response
-                    )
-                    arm_result["model_action_index"] = (
-                        intervention_decision.action_index
-                    )
-                    arm_result["valid"] = (
-                        intervention_action is not None
-                        and intervention_decision.parse_error is None
-                    )
-                    if intervention_action is not None:
-                        arm_result["action"] = intervention_action.to_dict()
-                        arm_result["hint_label"] = _hint_label(
-                            intervention_action
-                        )
-                        arm_result["used_convention_hint"] = (
-                            intervention_action
-                            == scenario.convention_trigger_hint
-                        )
-                        arm_result["used_robust_hint"] = (
-                            scenario.robust_hint is not None
-                            and intervention_action
-                            == scenario.robust_hint
-                        )
-                        arm_result["epistemic_choice_correct"] = (
-                            intervention_action == expected_sender_hint
-                            if expected_sender_hint is not None
-                            else None
-                        )
-
+                arm_result = _run_sender_intervention_arm(
+                    intervention_arm=intervention_arm,
+                    sender_mechanical_probe_valid=sender_mechanical_probe_valid,
+                    sender_probe_valid=sender_probe_valid,
+                    sender_instruction=sender_instruction,
+                    sender_mechanical_probe_effects=sender_mechanical_probe_effects,
+                    sender_probe_convention_hint_index=sender_probe_convention_hint_index,
+                    sender_probe_receiver_knowledge=sender_probe_receiver_knowledge,
+                    sender_intervention_seed_offset=sender_intervention_seed_offset,
+                    arm_seed_slot=arm_seed_slot,
+                    sender_seed=sender_seed,
+                    sender_spec_base=sender_spec_base,
+                    vary_api_seed=vary_api_seed,
+                    scenario=scenario,
+                    sender_actions=sender_actions,
+                    error_policy=error_policy,
+                    expected_sender_hint=expected_sender_hint,
+                )
                 sender_interventions[intervention_arm] = arm_result
 
-            # Backward-compatible aliases: the historical intervention is
-            # exactly the "both" arm.
-            legacy_intervention = sender_interventions.get("both")
-            sender_intervention_seed = (
-                legacy_intervention.get("seed")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_request_payload_hash = (
-                legacy_intervention.get("request_payload_hash")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_instruction_hash = (
-                legacy_intervention.get("instruction_hash")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_valid = bool(
-                legacy_intervention
-                and legacy_intervention.get("valid")
-            )
-            sender_intervention_error = (
-                legacy_intervention.get("error")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_model_action_index = (
-                legacy_intervention.get("model_action_index")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_action = (
-                legacy_intervention.get("action")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_hint_label = (
-                legacy_intervention.get("hint_label")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_used_convention_hint = (
-                legacy_intervention.get("used_convention_hint")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_used_robust_hint = (
-                legacy_intervention.get("used_robust_hint")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_epistemic_choice_correct = (
-                legacy_intervention.get("epistemic_choice_correct")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_response_channel = (
-                legacy_intervention.get("response_channel")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_raw_response = (
-                legacy_intervention.get("raw_response")
-                if legacy_intervention is not None
-                else None
-            )
-            sender_intervention_api_response = (
-                legacy_intervention.get("api_response")
-                if legacy_intervention is not None
-                else None
-            )
+            # The historical intervention fields alias the "both" arm.
+            legacy_intervention = sender_interventions.get("both") or {}
+            sender_intervention_seed = legacy_intervention.get("seed")
+            sender_intervention_request_payload_hash = legacy_intervention.get("request_payload_hash")
+            sender_intervention_instruction_hash = legacy_intervention.get("instruction_hash")
+            sender_intervention_valid = bool(legacy_intervention.get("valid"))
+            sender_intervention_error = legacy_intervention.get("error")
+            sender_intervention_model_action_index = legacy_intervention.get("model_action_index")
+            sender_intervention_action = legacy_intervention.get("action")
+            sender_intervention_hint_label = legacy_intervention.get("hint_label")
+            sender_intervention_used_convention_hint = legacy_intervention.get("used_convention_hint")
+            sender_intervention_used_robust_hint = legacy_intervention.get("used_robust_hint")
+            sender_intervention_epistemic_choice_correct = legacy_intervention.get("epistemic_choice_correct")
+            sender_intervention_response_channel = legacy_intervention.get("response_channel")
+            sender_intervention_raw_response = legacy_intervention.get("raw_response")
+            sender_intervention_api_response = legacy_intervention.get("api_response")
+
+            sender_diagnostics = {
+                "sender_intervention_enabled": (
+                    sender_self_derived_intervention
+                ),
+                "sender_intervention_arms": sender_intervention_arms,
+                "sender_intervention_order": sender_intervention_order,
+                "sender_interventions": sender_interventions,
+                "sender_intervention_seed": sender_intervention_seed,
+                "sender_intervention_instruction_hash": (
+                    sender_intervention_instruction_hash
+                ),
+                "sender_intervention_request_payload_hash": (
+                    sender_intervention_request_payload_hash
+                ),
+                "sender_intervention_valid": sender_intervention_valid,
+                "sender_intervention_error": sender_intervention_error,
+                "sender_intervention_model_action_index": (
+                    sender_intervention_model_action_index
+                ),
+                "sender_intervention_action": sender_intervention_action,
+                "sender_intervention_hint_label": (
+                    sender_intervention_hint_label
+                ),
+                "sender_intervention_used_convention_hint": (
+                    sender_intervention_used_convention_hint
+                ),
+                "sender_intervention_used_robust_hint": (
+                    sender_intervention_used_robust_hint
+                ),
+                "sender_intervention_epistemic_choice_correct": (
+                    sender_intervention_epistemic_choice_correct
+                ),
+                "sender_intervention_response_channel": (
+                    sender_intervention_response_channel
+                ),
+                "sender_intervention_raw_response": (
+                    sender_intervention_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_intervention_api_response": (
+                    sender_intervention_api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_mechanical_probe_enabled": sender_mechanical_probe,
+                "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
+                "sender_mechanical_probe_request_payload_hash": (
+                    sender_mechanical_probe_request_hash
+                ),
+                "sender_mechanical_probe_valid": sender_mechanical_probe_valid,
+                "sender_mechanical_probe_error": sender_mechanical_probe_error,
+                "sender_mechanical_probe_candidates": mechanical_probe_candidates,
+                "sender_mechanical_probe_expected_effects": (
+                    mechanical_probe_expected_effects
+                ),
+                "sender_mechanical_probe_effects": (
+                    sender_mechanical_probe_effects
+                ),
+                "sender_mechanical_probe_exact_correct": (
+                    sender_mechanical_probe_exact_correct
+                ),
+                "sender_mechanical_probe_robust_effect_correct": (
+                    sender_mechanical_probe_robust_effect_correct
+                ),
+                "sender_mechanical_probe_convention_effect_correct": (
+                    sender_mechanical_probe_convention_effect_correct
+                ),
+                "sender_mechanical_probe_response_channel": (
+                    sender_mechanical_probe_response_channel
+                ),
+                "sender_mechanical_probe_raw_response": (
+                    sender_mechanical_probe_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_mechanical_probe_api_response": (
+                    sender_mechanical_probe_api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_probe_enabled": sender_probe,
+                "sender_probe_seed": sender_probe_seed,
+                "sender_probe_request_payload_hash": (
+                    sender_probe_request_hash
+                ),
+                "sender_probe_valid": sender_probe_valid,
+                "sender_probe_error": sender_probe_error,
+                "sender_probe_expected_hint_index": expected_probe_hint_index,
+                "sender_probe_convention_hint_index": (
+                    sender_probe_convention_hint_index
+                ),
+                "sender_probe_identified_convention_hint": (
+                    sender_probe_identified_convention_hint
+                ),
+                "sender_probe_mapping_correct": sender_probe_mapping_correct,
+                "sender_probe_expected_receiver_convention_knowledge": (
+                    expected_receiver_knowledge
+                ),
+                "sender_probe_receiver_convention_knowledge": (
+                    sender_probe_receiver_knowledge
+                ),
+                "sender_probe_partner_knowledge_correct": (
+                    sender_probe_partner_knowledge_correct
+                ),
+                "sender_epistemic_probe_exact_correct": (
+                    sender_epistemic_probe_exact_correct
+                ),
+                "sender_joint_probe_valid": sender_joint_probe_valid,
+                "sender_joint_mechanics_epistemics_correct": (
+                    sender_joint_mechanics_epistemics_correct
+                ),
+                "sender_failure_classification": (
+                    sender_failure_classification
+                ),
+                "sender_probe_response_channel": (
+                    sender_probe_response_channel
+                ),
+                "sender_probe_raw_response": (
+                    sender_probe_raw_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+                "sender_probe_api_response": (
+                    sender_probe_api_response
+                    if cfg.get("log_raw_model_responses", True)
+                    else None
+                ),
+            }
 
             if sender_only:
                 record = {
@@ -856,133 +685,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                         sender_condition_instruction
                     ),
                     "sender_request_payload_hash": sender_request_hash,
-                    "sender_intervention_enabled": (
-                        sender_self_derived_intervention
-                    ),
-                    "sender_intervention_arms": sender_intervention_arms,
-                    "sender_intervention_order": sender_intervention_order,
-                    "sender_interventions": sender_interventions,
-                    "sender_intervention_seed": sender_intervention_seed,
-                    "sender_intervention_instruction_hash": (
-                        sender_intervention_instruction_hash
-                    ),
-                    "sender_intervention_request_payload_hash": (
-                        sender_intervention_request_payload_hash
-                    ),
-                    "sender_intervention_valid": sender_intervention_valid,
-                    "sender_intervention_error": sender_intervention_error,
-                    "sender_intervention_model_action_index": (
-                        sender_intervention_model_action_index
-                    ),
-                    "sender_intervention_action": sender_intervention_action,
-                    "sender_intervention_hint_label": (
-                        sender_intervention_hint_label
-                    ),
-                    "sender_intervention_used_convention_hint": (
-                        sender_intervention_used_convention_hint
-                    ),
-                    "sender_intervention_used_robust_hint": (
-                        sender_intervention_used_robust_hint
-                    ),
-                    "sender_intervention_epistemic_choice_correct": (
-                        sender_intervention_epistemic_choice_correct
-                    ),
-                    "sender_intervention_response_channel": (
-                        sender_intervention_response_channel
-                    ),
-                    "sender_intervention_raw_response": (
-                        sender_intervention_raw_response
-                        if cfg.get("log_raw_model_responses", True)
-                        else None
-                    ),
-                    "sender_intervention_api_response": (
-                        sender_intervention_api_response
-                        if cfg.get("log_raw_model_responses", True)
-                        else None
-                    ),
-                    "sender_mechanical_probe_enabled": sender_mechanical_probe,
-                    "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
-                    "sender_mechanical_probe_request_payload_hash": (
-                        sender_mechanical_probe_request_hash
-                    ),
-                    "sender_mechanical_probe_valid": sender_mechanical_probe_valid,
-                    "sender_mechanical_probe_error": sender_mechanical_probe_error,
-                    "sender_mechanical_probe_candidates": mechanical_probe_candidates,
-                    "sender_mechanical_probe_expected_effects": (
-                        mechanical_probe_expected_effects
-                    ),
-                    "sender_mechanical_probe_effects": (
-                        sender_mechanical_probe_effects
-                    ),
-                    "sender_mechanical_probe_exact_correct": (
-                        sender_mechanical_probe_exact_correct
-                    ),
-                    "sender_mechanical_probe_robust_effect_correct": (
-                        sender_mechanical_probe_robust_effect_correct
-                    ),
-                    "sender_mechanical_probe_convention_effect_correct": (
-                        sender_mechanical_probe_convention_effect_correct
-                    ),
-                    "sender_mechanical_probe_response_channel": (
-                        sender_mechanical_probe_response_channel
-                    ),
-                    "sender_mechanical_probe_raw_response": (
-                        sender_mechanical_probe_raw_response
-                        if cfg.get("log_raw_model_responses", True)
-                        else None
-                    ),
-                    "sender_mechanical_probe_api_response": (
-                        sender_mechanical_probe_api_response
-                        if cfg.get("log_raw_model_responses", True)
-                        else None
-                    ),
-                    "sender_probe_enabled": sender_probe,
-                    "sender_probe_seed": sender_probe_seed,
-                    "sender_probe_request_payload_hash": (
-                        sender_probe_request_hash
-                    ),
-                    "sender_probe_valid": sender_probe_valid,
-                    "sender_probe_error": sender_probe_error,
-                    "sender_probe_expected_hint_index": expected_probe_hint_index,
-                    "sender_probe_convention_hint_index": (
-                        sender_probe_convention_hint_index
-                    ),
-                    "sender_probe_identified_convention_hint": (
-                        sender_probe_identified_convention_hint
-                    ),
-                    "sender_probe_mapping_correct": sender_probe_mapping_correct,
-                    "sender_probe_expected_receiver_convention_knowledge": (
-                        expected_receiver_knowledge
-                    ),
-                    "sender_probe_receiver_convention_knowledge": (
-                        sender_probe_receiver_knowledge
-                    ),
-                    "sender_probe_partner_knowledge_correct": (
-                        sender_probe_partner_knowledge_correct
-                    ),
-                    "sender_epistemic_probe_exact_correct": (
-                        sender_epistemic_probe_exact_correct
-                    ),
-                    "sender_joint_probe_valid": sender_joint_probe_valid,
-                    "sender_joint_mechanics_epistemics_correct": (
-                        sender_joint_mechanics_epistemics_correct
-                    ),
-                    "sender_failure_classification": (
-                        sender_failure_classification
-                    ),
-                    "sender_probe_response_channel": (
-                        sender_probe_response_channel
-                    ),
-                    "sender_probe_raw_response": (
-                        sender_probe_raw_response
-                        if cfg.get("log_raw_model_responses", True)
-                        else None
-                    ),
-                    "sender_probe_api_response": (
-                        sender_probe_api_response
-                        if cfg.get("log_raw_model_responses", True)
-                        else None
-                    ),
+                    **sender_diagnostics,
                     "sender_goal": scenario.sender_goal,
                     "sender_observation": scenario.sender_observation.to_dict(),
                     "sender_legal_hints": [
@@ -1122,133 +825,7 @@ def run_pair_micro_experiment(config_path: str | Path) -> dict[str, Any]:
                 ),
                 "sender_request_payload_hash": sender_request_hash,
                 "receiver_request_payload_hash": receiver_request_hash,
-                "sender_intervention_enabled": (
-                    sender_self_derived_intervention
-                ),
-                "sender_intervention_arms": sender_intervention_arms,
-                "sender_intervention_order": sender_intervention_order,
-                "sender_interventions": sender_interventions,
-                "sender_intervention_seed": sender_intervention_seed,
-                "sender_intervention_instruction_hash": (
-                    sender_intervention_instruction_hash
-                ),
-                "sender_intervention_request_payload_hash": (
-                    sender_intervention_request_payload_hash
-                ),
-                "sender_intervention_valid": sender_intervention_valid,
-                "sender_intervention_error": sender_intervention_error,
-                "sender_intervention_model_action_index": (
-                    sender_intervention_model_action_index
-                ),
-                "sender_intervention_action": sender_intervention_action,
-                "sender_intervention_hint_label": (
-                    sender_intervention_hint_label
-                ),
-                "sender_intervention_used_convention_hint": (
-                    sender_intervention_used_convention_hint
-                ),
-                "sender_intervention_used_robust_hint": (
-                    sender_intervention_used_robust_hint
-                ),
-                "sender_intervention_epistemic_choice_correct": (
-                    sender_intervention_epistemic_choice_correct
-                ),
-                "sender_intervention_response_channel": (
-                    sender_intervention_response_channel
-                ),
-                "sender_intervention_raw_response": (
-                    sender_intervention_raw_response
-                    if cfg.get("log_raw_model_responses", True)
-                    else None
-                ),
-                "sender_intervention_api_response": (
-                    sender_intervention_api_response
-                    if cfg.get("log_raw_model_responses", True)
-                    else None
-                ),
-                "sender_mechanical_probe_enabled": sender_mechanical_probe,
-                "sender_mechanical_probe_seed": sender_mechanical_probe_seed,
-                "sender_mechanical_probe_request_payload_hash": (
-                    sender_mechanical_probe_request_hash
-                ),
-                "sender_mechanical_probe_valid": sender_mechanical_probe_valid,
-                "sender_mechanical_probe_error": sender_mechanical_probe_error,
-                "sender_mechanical_probe_candidates": mechanical_probe_candidates,
-                "sender_mechanical_probe_expected_effects": (
-                    mechanical_probe_expected_effects
-                ),
-                "sender_mechanical_probe_effects": (
-                    sender_mechanical_probe_effects
-                ),
-                "sender_mechanical_probe_exact_correct": (
-                    sender_mechanical_probe_exact_correct
-                ),
-                "sender_mechanical_probe_robust_effect_correct": (
-                    sender_mechanical_probe_robust_effect_correct
-                ),
-                "sender_mechanical_probe_convention_effect_correct": (
-                    sender_mechanical_probe_convention_effect_correct
-                ),
-                "sender_mechanical_probe_response_channel": (
-                    sender_mechanical_probe_response_channel
-                ),
-                "sender_mechanical_probe_raw_response": (
-                    sender_mechanical_probe_raw_response
-                    if cfg.get("log_raw_model_responses", True)
-                    else None
-                ),
-                "sender_mechanical_probe_api_response": (
-                    sender_mechanical_probe_api_response
-                    if cfg.get("log_raw_model_responses", True)
-                    else None
-                ),
-                "sender_probe_enabled": sender_probe,
-                "sender_probe_seed": sender_probe_seed,
-                "sender_probe_request_payload_hash": (
-                    sender_probe_request_hash
-                ),
-                "sender_probe_valid": sender_probe_valid,
-                "sender_probe_error": sender_probe_error,
-                "sender_probe_expected_hint_index": expected_probe_hint_index,
-                "sender_probe_convention_hint_index": (
-                    sender_probe_convention_hint_index
-                ),
-                "sender_probe_identified_convention_hint": (
-                    sender_probe_identified_convention_hint
-                ),
-                "sender_probe_mapping_correct": sender_probe_mapping_correct,
-                "sender_probe_expected_receiver_convention_knowledge": (
-                    expected_receiver_knowledge
-                ),
-                "sender_probe_receiver_convention_knowledge": (
-                    sender_probe_receiver_knowledge
-                ),
-                "sender_probe_partner_knowledge_correct": (
-                    sender_probe_partner_knowledge_correct
-                ),
-                "sender_epistemic_probe_exact_correct": (
-                    sender_epistemic_probe_exact_correct
-                ),
-                "sender_joint_probe_valid": sender_joint_probe_valid,
-                "sender_joint_mechanics_epistemics_correct": (
-                    sender_joint_mechanics_epistemics_correct
-                ),
-                "sender_failure_classification": (
-                    sender_failure_classification
-                ),
-                "sender_probe_response_channel": (
-                    sender_probe_response_channel
-                ),
-                "sender_probe_raw_response": (
-                    sender_probe_raw_response
-                    if cfg.get("log_raw_model_responses", True)
-                    else None
-                ),
-                "sender_probe_api_response": (
-                    sender_probe_api_response
-                    if cfg.get("log_raw_model_responses", True)
-                    else None
-                ),
+                **sender_diagnostics,
                 "sender_goal": scenario.sender_goal,
                 "sender_observation": scenario.sender_observation.to_dict(),
                 "sender_legal_hints": [

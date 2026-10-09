@@ -19,6 +19,13 @@ from .micro_runner import (
 from .pair_interventions import INTERVENTION_ARMS
 
 
+def _choice_transition_label(baseline_correct: bool, intervention_correct: bool) -> str:
+    """Keep legacy and factorial intervention transition bins identical."""
+    baseline = "correct" if baseline_correct else "wrong"
+    intervention = "correct" if intervention_correct else "wrong"
+    return f"baseline_{baseline}_intervention_{intervention}"
+
+
 def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     valid = [sample for sample in samples if sample["valid"]]
     if not valid:
@@ -250,15 +257,7 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
             sample.get("sender_intervention_epistemic_choice_correct") is True
         )
         transition_counts[
-            (
-                "baseline_correct_intervention_correct"
-                if baseline_correct and intervention_correct
-                else "baseline_correct_intervention_wrong"
-                if baseline_correct
-                else "baseline_wrong_intervention_correct"
-                if intervention_correct
-                else "baseline_wrong_intervention_wrong"
-            )
+            _choice_transition_label(baseline_correct, intervention_correct)
         ] += 1
 
     baseline_wrong_with_intervention = [
@@ -337,17 +336,7 @@ def aggregate_pair_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
                 )
                 is True
             )
-            transitions[
-                (
-                    "baseline_correct_intervention_correct"
-                    if baseline_correct and arm_correct
-                    else "baseline_correct_intervention_wrong"
-                    if baseline_correct
-                    else "baseline_wrong_intervention_correct"
-                    if arm_correct
-                    else "baseline_wrong_intervention_wrong"
-                )
-            ] += 1
+            transitions[_choice_transition_label(baseline_correct, arm_correct)] += 1
 
         baseline_wrong_arm = [
             sample for sample in choice_arm
