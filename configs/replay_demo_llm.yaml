@@ -1,4 +1,5 @@
-# One full LLM game. Set model/base_url for your endpoint before running.
+# One full game with the established OpenRouter GPT-5.4 settings.
+# Credentials: OPENROUTER_API_KEY (preferred) or OPENAI_API_KEY.
 experiment: replay_demo_llm
 output_dir: runs
 num_players: 2
@@ -11,38 +12,37 @@ convention: If a player gives a rank hint that touches the receiver's newest car
   as it is safe to do so.
 agents:
 - type: openai_compatible
-  name: llm_A
-  model: qwen/qwen3.8-27b
-  base_url: http://localhost:1234/v1
-  temperature: 0.7
-  timeout_s: 300
-  max_tokens: 256
+  name: gpt-5.4_A
+  model: openai/gpt-5.4
+  base_url: https://openrouter.ai/api/v1
+  temperature: null
+  timeout_s: 180
+  max_tokens: 2048
   structured_output: true
   extra_body:
-    top_p: 0.8
-    top_k: 20
-    presence_penalty: 1.5
-    seed: 0
-    chat_template_kwargs:
-      enable_thinking: false
-      preserve_thinking: false
+    provider:
+      order:
+      - openai
+      allow_fallbacks: false
+    reasoning:
+      effort: medium
 - type: openai_compatible
-  name: llm_B
-  model: qwen/qwen3.8-27b
-  base_url: http://localhost:1234/v1
-  temperature: 0.7
-  timeout_s: 300
-  max_tokens: 256
+  name: gpt-5.4_B
+  model: openai/gpt-5.4
+  base_url: https://openrouter.ai/api/v1
+  temperature: null
+  timeout_s: 180
+  max_tokens: 2048
   structured_output: true
   extra_body:
-    top_p: 0.8
-    top_k: 20
-    presence_penalty: 1.5
-    seed: 0
-    chat_template_kwargs:
-      enable_thinking: false
-      preserve_thinking: false
+    provider:
+      order:
+      - openai
+      allow_fallbacks: false
+    reasoning:
+      effort: medium
 agent_error_policy: abort
 log_private_instructions: true
 log_raw_model_responses: true
 log_request_payloads: true
+mechanical_scaffold: derived

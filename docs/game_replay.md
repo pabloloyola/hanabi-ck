@@ -19,12 +19,14 @@ The agents do not read the experimental convention instructions.
 
 ## Record one LLM game
 
-Edit the model and endpoint for both players in
-`configs/replay_demo_llm.yaml`. Its initial settings use the existing LM Studio
-configuration; the configured model must be loaded. For a remote endpoint, use
-an environment variable for credentials rather than putting a key in the config.
-This runs one two-player game in CK3, not a controlled CK2/CK3 comparison.
-A full game can require dozens of model calls.
+`configs/replay_demo_llm.yaml` uses the established OpenRouter GPT-5.4
+settings for both players: `openai/gpt-5.4`, OpenAI provider routing without
+fallbacks, medium reasoning, and structured action output. Set
+`OPENROUTER_API_KEY` in your terminal (or use the existing `OPENAI_API_KEY`).
+Credentials are read from the environment; do not put them in the config.
+This runs one two-player game in CK3 with the derived mechanical scaffold,
+not a controlled CK2/CK3 comparison. A full game can require dozens of model
+calls. Change both agent entries if you want to use a different model.
 
 ```bash
 uv run hanabi-ck run configs/replay_demo_llm.yaml
