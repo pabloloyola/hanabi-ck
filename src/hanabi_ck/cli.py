@@ -87,6 +87,8 @@ def main() -> None:
     if args.command == "run":
         summary = run_experiment(args.config)
         print(json.dumps(summary["aggregate_by_condition"], indent=2))
+        if any(game.get("aborted") for game in summary["games"]):
+            raise SystemExit(1)
     elif args.command == "micro":
         summary = run_micro_experiment(args.config)
         print(

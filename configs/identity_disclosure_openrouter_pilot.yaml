@@ -1,6 +1,6 @@
 # Generate configs only with identity-prepare; this is not a run config.
 # Models reuse IDs from existing project configs. Preflight both endpoints.
-experiment: identity_disclosure_pilot_v1
+experiment: identity_disclosure_pilot_v2
 seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 game:
   output_dir: runs
@@ -15,6 +15,9 @@ models:
     timeout_s: 180
     max_tokens: 16384
     structured_output: true
+    http_max_retries: 3
+    http_retry_backoff_s: 10
+    http_retry_max_wait_s: 60
     extra_body:
       provider:
         order: [openai]
@@ -29,6 +32,9 @@ models:
     timeout_s: 180
     max_tokens: 16384
     structured_output: true
+    http_max_retries: 3
+    http_retry_backoff_s: 10
+    http_retry_max_wait_s: 60
     extra_body:
       provider:
         order: [venice]

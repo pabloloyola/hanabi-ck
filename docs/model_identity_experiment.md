@@ -41,9 +41,9 @@ From the repository root, with `OPENROUTER_API_KEY` set:
 
 ```bash
 uv run hanabi-ck identity-prepare configs/identity_disclosure_openrouter_smoke.yaml \
-  --output configs/generated_identity_smoke
-uv run hanabi-ck api-check configs/generated_identity_smoke/AA_hidden.yaml
-uv run hanabi-ck api-check configs/generated_identity_smoke/BB_hidden.yaml
+  --output configs/generated_identity_smoke_v2
+uv run hanabi-ck api-check configs/generated_identity_smoke_v2/AA_hidden.yaml
+uv run hanabi-ck api-check configs/generated_identity_smoke_v2/BB_hidden.yaml
 ```
 
 Preparation makes eight YAML files and a manifest; it makes **no model requests**.
@@ -55,15 +55,15 @@ prepare a new experiment instead. Inline credentials are rejected.
 ## First game, then its disclosure comparison
 
 ```bash
-uv run hanabi-ck run configs/generated_identity_smoke/AA_hidden.yaml
-uv run hanabi-ck replay-audit runs/identity_disclosure_smoke_v1_AA_hidden/ck0/seed_000000.jsonl
+uv run hanabi-ck run configs/generated_identity_smoke_v2/AA_hidden.yaml
+uv run hanabi-ck replay-audit runs/identity_disclosure_smoke_v2_AA_hidden/ck0/seed_000000.jsonl
 ```
 
 Check complete/eligible before proceeding. Then:
 
 ```bash
-uv run hanabi-ck run configs/generated_identity_smoke/AA_named.yaml
-uv run hanabi-ck identity-analyze configs/generated_identity_smoke/manifest.json
+uv run hanabi-ck run configs/generated_identity_smoke_v2/AA_named.yaml
+uv run hanabi-ck identity-analyze configs/generated_identity_smoke_v2/manifest.json
 ```
 
 Partial analysis reports missing cells explicitly. Run the six remaining configs
@@ -78,7 +78,7 @@ After the smoke grid is stable:
 
 ```bash
 uv run hanabi-ck identity-prepare configs/identity_disclosure_openrouter_pilot.yaml \
-  --output configs/generated_identity_pilot
+  --output configs/generated_identity_pilot_v2
 ```
 
 The pilot contains ten matched deck seeds per cell: **80 full games total**.
@@ -88,7 +88,7 @@ order; API drift and sampling randomness can affect results. Matching seed contr
 the initial deal, not identical trajectories after different actions.
 
 ```bash
-uv run hanabi-ck identity-analyze configs/generated_identity_pilot/manifest.json
+uv run hanabi-ck identity-analyze configs/generated_identity_pilot_v2/manifest.json
 ```
 
 Primary outcome: per-pairing score difference, named minus hidden, on matching
@@ -110,3 +110,24 @@ can compare unnamed same/different disclosure and explicit mutual identity aware
 Existing `replay` works on these logs. The inspector's exact private instructions
 show the identity treatment. Researcher-only log metadata records actual models even
 in hidden conditions; it is never fed to the agent as part of the board observation.
+
+## HTTP reliability controls (v2)
+
+The original v1 DeepSeek smoke cells aborted with HTTP 429; keep those recordings.
+V2 applies the same transport retry policy to both models: at most three retries
+for HTTP 429 or 503, with 10/20/40-second backoff unless Retry-After specifies a
+delay. Retry-After supports seconds and HTTP dates. If the provider requests more
+than the 60-second wait cap, abort instead of retrying too early. Requests retain
+the exact same payload and provider routing. No completion, parsing failure,
+token truncation, timeout, or other HTTP error is retried.
+
+Every opted-in action logs `http_attempts`, including response statuses, failed
+response bodies, Retry-After, and retry waits. Final failed response bodies also
+appear in `api_response`. Successful retries are not policy fallbacks; report
+retry counts when assessing infrastructure reliability. The historical default
+is zero retries, so other experiment configs keep their single-attempt behavior.
+
+`run` now exits with code 1 after printing a summary containing an aborted game;
+`run ... || break` therefore stops a sequential batch at the first abort.
+Use the new v2 generated directory/experiment names, rather than editing v1
+configs or overwriting v1 logs. Recreate all comparison cells under v2 controls.

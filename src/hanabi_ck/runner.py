@@ -49,6 +49,9 @@ def _build_agent(spec: dict[str, Any], *, seed: int):
             ),
             extra_body=dict(spec.get("extra_body") or {}),
             structured_output=bool(spec.get("structured_output", False)),
+            http_max_retries=int(spec.get("http_max_retries", 0)),
+            http_retry_backoff_s=float(spec.get("http_retry_backoff_s", 10)),
+            http_retry_max_wait_s=float(spec.get("http_retry_max_wait_s", 60)),
             mechanical_scaffold=normalize_mechanical_scaffold(
                 spec.get("mechanical_scaffold", "derived")
             ),
@@ -203,6 +206,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                         {
                             **({"identity_setup": identity_setup}
                                if identity_setup is not None else {}),
+                            **({"http_attempts": decision.http_attempts}
+                               if decision.http_attempts is not None else {}),
                             "event_kind": "agent_error",
                             "experiment": experiment,
                             "backend": backend_name,
@@ -334,6 +339,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                 }
                 if identity_setup is not None:
                     record["identity_setup"] = identity_setup
+                if decision.http_attempts is not None:
+                    record["http_attempts"] = decision.http_attempts
                 logger.write(record)
                 turns.append(record)
 

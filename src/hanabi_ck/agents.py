@@ -4,7 +4,10 @@ import json
 import os
 import random
 import re
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Protocol
 
 import httpx
@@ -24,6 +27,7 @@ class AgentDecision:
     parse_error: str | None = None
     fallback_used: bool = False
     request_payload: dict[str, Any] | None = None
+    http_attempts: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -361,6 +365,9 @@ class OpenAICompatibleAgent:
         extra_body: dict[str, Any] | None = None,
         structured_output: bool = False,
         mechanical_scaffold: str = "derived",
+        http_max_retries: int = 0,
+        http_retry_backoff_s: float = 10.0,
+        http_retry_max_wait_s: float = 60.0,
     ):
         self.name = name
         self.model = model
@@ -393,6 +400,11 @@ class OpenAICompatibleAgent:
         self.timeout_s = timeout_s
         self.max_tokens = max_tokens
         self.extra_body = dict(extra_body or {})
+        if http_max_retries < 0 or http_retry_backoff_s < 0 or http_retry_max_wait_s < 0:
+            raise ValueError("HTTP retry settings must be nonnegative")
+        self.http_max_retries = http_max_retries
+        self.http_retry_backoff_s = http_retry_backoff_s
+        self.http_retry_max_wait_s = http_retry_max_wait_s
         self.structured_output = structured_output
         self.mechanical_scaffold = normalize_mechanical_scaffold(
             mechanical_scaffold
@@ -1136,6 +1148,7 @@ indices in ascending order. Do not explain your answer."""
         raw = ""
         data: dict[str, Any] | None = None
         payload: dict[str, Any] | None = None
+        attempts: list[dict[str, Any]] | None = [] if self.http_max_retries else None
         try:
             payload = self._request_payload(
                 observation,
@@ -1144,11 +1157,42 @@ indices in ascending order. Do not explain your answer."""
             )
             headers = {"Authorization": f"Bearer {self.api_key}"}
             with httpx.Client(timeout=self.timeout_s) as client:
-                response = client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
+                for attempt in range(self.http_max_retries + 1):
+                    response = client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+                    entry: dict[str, Any] = {"attempt": attempt + 1,
+                                             "status_code": response.status_code}
+                    if response.is_error:
+                        try:
+                            data = response.json()
+                        except ValueError:
+                            data = {"error": {"message": response.text[:4000]}}
+                        entry["response_body"] = data
+                        entry["retry_after"] = response.headers.get("Retry-After")
+                    if attempts is not None:
+                        attempts.append(entry)
+                    if response.status_code not in {429, 503} or attempt == self.http_max_retries:
+                        break
+                    wait_s = min(self.http_retry_backoff_s * (2 ** attempt),
+                                 self.http_retry_max_wait_s)
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            wait_s = max(0.0, float(retry_after))
+                        except ValueError:
+                            try:
+                                wait_s = max(0.0, (parsedate_to_datetime(retry_after)
+                                                  - datetime.now(timezone.utc)).total_seconds())
+                            except (ValueError, TypeError, OverflowError):
+                                pass
+                    # Do not retry earlier than a provider's requested delay.
+                    if wait_s > self.http_retry_max_wait_s:
+                        break
+                    entry["wait_before_retry_s"] = wait_s
+                    time.sleep(wait_s)
                 response.raise_for_status()
                 data = response.json()
 
@@ -1168,6 +1212,7 @@ indices in ascending order. Do not explain your answer."""
                 response_channel=response_channel,
                 api_response=data,
                 request_payload=payload,
+                http_attempts=attempts,
             )
         except Exception as exc:
             return AgentDecision(
@@ -1180,6 +1225,7 @@ indices in ascending order. Do not explain your answer."""
                 ),
                 api_response=data,
                 request_payload=payload,
+                http_attempts=attempts,
                 parse_error=f"{type(exc).__name__}: {exc}",
                 fallback_used=False,
             )

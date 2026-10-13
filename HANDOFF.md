@@ -557,3 +557,15 @@ only teammate identity disclosure changes. Smoke is 8 games; pilot is 80.
 No remote model runs were executed while implementing this setup. Existing
 CK experiments remain unchanged. The historical positive-information replication
 remains a separate pending task.
+
+
+### Identity study transport fix (2026-10-13)
+
+User's v1 AA games completed (hidden score10/named14); all six DeepSeek cells
+aborted with HTTP429. A later API check succeeded, so the exact upstream cause
+remains unverified. V2 identity configs opt into three retries of unchanged
+action requests on429/503, respecting Retry-After and a60-second wait cap.
+Attempt/errorbody metadata is logged; truncations and parse failures are not
+retried. Other configs default to zero retries. CLI run exits1 on aborted games.
+Preserve v1 data and prepare v2 into a new directory. No paid requests were run
+by the assistant during the fix.
