@@ -10,6 +10,7 @@ is**, and **why the architecture looks the way it does**.
 | [../README.md](../README.md) | installation, quick start, project overview |
 | [gpt54_scaffold_factorial_results.md](gpt54_scaffold_factorial_results.md) | canonical record of the current GPT-5.4 result |
 | [game_replay.md](game_replay.md) | export and share a step-by-step offline game replay |
+| [model_identity_experiment.md](model_identity_experiment.md) | model pairing and identity disclosure study |
 | [experiments.md](experiments.md) | experiment families, configs, and recommended run order |
 | [hanabi_source_integration.md](hanabi_source_integration.md) | native/HLE backend decision and mechanical-scaffold architecture |
 | [hanabi_ck_harness_guide.tex](hanabi_ck_harness_guide.tex) | long-form illustrated technical guide |

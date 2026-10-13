@@ -11,10 +11,10 @@ from .actions import Action
 from .agents import AgentDecision, OpenAICompatibleAgent, RandomAgent, SimpleAgent
 from .backends import BACKEND_NAMES, create_backend
 from .conditions import DEFAULT_CONVENTION, get_condition
+from .identity import identity_instruction
 from .logging import JsonlLogger
 from .metrics import aggregate_games, summarize_game
 from .scaffolds import normalize_mechanical_scaffold
-
 
 ERROR_POLICIES = {"abort", "safe_baseline"}
 
@@ -129,6 +129,15 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
     if len(agent_specs) != num_players:
         raise ValueError("Number of agent specs must equal num_players")
 
+    identity_mode = cfg.get("identity_disclosure")
+    identity_setup = None
+    if identity_mode is not None:
+        identity_instruction(agent_specs, 0, identity_mode)
+        identity_setup = {
+            "mode": identity_mode,
+            "agent_models": [spec["model"] for spec in agent_specs],
+        }
+
     all_summaries: list[dict[str, Any]] = []
 
     for condition_name in conditions:
@@ -146,6 +155,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
 
             log_path = output_root / condition_name / f"seed_{seed:06d}.jsonl"
             if log_path.exists():
+                if identity_mode is not None:
+                    raise ValueError(f"Refusing to overwrite identity study log: {log_path}")
                 log_path.unlink()
             logger = JsonlLogger(log_path)
             turns: list[dict[str, Any]] = []
@@ -163,6 +174,11 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     convention=convention,
                     informed_players=ck1_informed_players,
                 )
+
+                if identity_mode is not None:
+                    private_instruction += "\n\n" + identity_instruction(
+                        agent_specs, p, identity_mode
+                    )
 
                 decision = agents[p].act(
                     observation,
@@ -185,6 +201,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     abort_reason = decision.parse_error or "Agent returned no action"
                     logger.write(
                         {
+                            **({"identity_setup": identity_setup}
+                               if identity_setup is not None else {}),
                             "event_kind": "agent_error",
                             "experiment": experiment,
                             "backend": backend_name,
@@ -314,6 +332,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     "outcome": result.outcome,
                     "probes": {},
                 }
+                if identity_setup is not None:
+                    record["identity_setup"] = identity_setup
                 logger.write(record)
                 turns.append(record)
 
@@ -333,6 +353,8 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
                     "log_path": str(log_path),
                 }
             )
+            if identity_setup is not None:
+                game_summary["identity_setup"] = identity_setup
             all_summaries.append(game_summary)
 
     by_condition: dict[str, Any] = {}
@@ -357,6 +379,11 @@ def run_experiment(config_path: str | Path) -> dict[str, Any]:
         "games": all_summaries,
         "aggregate_by_condition": by_condition,
     }
+    if identity_setup is not None:
+        summary["identity_setup"] = identity_setup
+        summary["identity_config_sha256"] = hashlib.sha256(
+            Path(config_path).read_bytes()
+        ).hexdigest()
     summary_path = output_root / "summary.json"
     summary_path.write_text(
         json.dumps(summary, indent=2),

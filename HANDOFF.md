@@ -545,3 +545,15 @@ and offline regression comparison. Proceed with the positive-information
 replication in Section 13: establish and test the microstate's mechanics first,
 then prepare derived/raw minimal-pair smoke configs. Do not add another shadow
 probe to the old scenario or start a large paid run before a smoke check.
+
+
+## Model identity disclosure setup (2026-10-13)
+
+The user requested a simpler identity study before returning to convention CK.
+See `docs/model_identity_experiment.md`. New `identity-prepare` generates AA, BB,
+AB, BA x hidden/named full-game CK0 configs; `identity-analyze` compares matched
+completed seeds and checks setup hashes. Own identity is supplied in both arms;
+only teammate identity disclosure changes. Smoke is 8 games; pilot is 80.
+No remote model runs were executed while implementing this setup. Existing
+CK experiments remain unchanged. The historical positive-information replication
+remains a separate pending task.

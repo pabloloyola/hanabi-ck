@@ -38,6 +38,7 @@ Results are written under `runs/`.
 
 - [Documentation index](docs/README.md)
 - [Experiment/config guide](docs/experiments.md)
+- [Model identity disclosure study](docs/model_identity_experiment.md)
 - [Current GPT-5.4 result](docs/gpt54_scaffold_factorial_results.md)
 - [Backend and mechanical-scaffold architecture](docs/hanabi_source_integration.md)
 - [Illustrated harness guide](docs/hanabi_ck_harness_guide.tex)

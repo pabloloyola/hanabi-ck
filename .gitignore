@@ -8,3 +8,6 @@ runs/
 .vendor/
 
 demos/*.html
+
+# Locally generated identity experiment manifests/configs
+configs/generated_identity*/
