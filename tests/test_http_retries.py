@@ -7,7 +7,9 @@ from hanabi_ck.agents import OpenAICompatibleAgent
 from hanabi_ck.engine import HanabiGame
 
 
-def run_responses(monkeypatch, statuses, *, retries=3, retry_after=None):
+def run_responses(
+    monkeypatch, statuses, *, retries=3, retry_after=None, error_metadata=None, max_wait=60
+):
     requests, sleeps = [], []
 
     def handler(request):
@@ -20,6 +22,8 @@ def run_responses(monkeypatch, statuses, *, retries=3, retry_after=None):
                 "choices": [{"finish_reason": "stop", "message": {"content": '{"action_index":0}'}}]
             }
         )
+        if status != 200 and error_metadata is not None:
+            content["error"]["metadata"] = error_metadata
         return httpx.Response(
             status, json=content, headers={"Retry-After": retry_after} if retry_after else {}
         )
@@ -31,7 +35,11 @@ def run_responses(monkeypatch, statuses, *, retries=3, retry_after=None):
     )
     monkeypatch.setattr("hanabi_ck.agents.time.sleep", sleeps.append)
     agent = OpenAICompatibleAgent(
-        name="test", model="model", api_key="test", http_max_retries=retries
+        name="test",
+        model="model",
+        api_key="test",
+        http_max_retries=retries,
+        http_retry_max_wait_s=max_wait,
     )
     game = HanabiGame(num_players=2, seed=0)
     decision = agent.act(game.observe(0), game.legal_actions(0), "test")
@@ -99,3 +107,65 @@ def test_timeout_is_recorded_and_not_retried(monkeypatch):
     assert "ReadTimeout" in decision.http_attempts[0]["error"]
     assert decision.http_attempts[0]["retried"] is False
     assert decision.http_attempts[0]["elapsed_s"] >= 0
+
+
+def test_in_flight_402_respects_120_second_delay(monkeypatch):
+    decision, requests, sleeps = run_responses(
+        monkeypatch,
+        [402, 200],
+        retry_after="120",
+        max_wait=180,
+        error_metadata={"limit_source": "openrouter_in_flight_budget"},
+    )
+    assert decision.parse_error is None
+    assert len(requests) == 2 and requests[0] == requests[1]
+    assert sleeps == [60, 60]
+    assert decision.http_attempts[0]["wait_before_retry_s"] == 120
+
+
+def test_in_flight_402_accepts_metadata_retry_after(monkeypatch):
+    decision, _, sleeps = run_responses(
+        monkeypatch,
+        [402, 200],
+        max_wait=180,
+        error_metadata={
+            "limit_source": "openrouter_in_flight_budget",
+            "headers": {"Retry-After": "120"},
+        },
+    )
+    assert decision.parse_error is None and sleeps == [60, 60]
+    assert decision.http_attempts[0]["retry_after"] == "120"
+
+
+@pytest.mark.parametrize("scope", ["openrouter_credits", "openrouter_key_limit", None])
+def test_other_402_does_not_retry_even_with_delay(monkeypatch, scope):
+    decision, requests, sleeps = run_responses(
+        monkeypatch,
+        [402],
+        retry_after="120",
+        max_wait=180,
+        error_metadata={"limit_source": scope},
+    )
+    assert decision.parse_error and len(requests) == 1 and not sleeps
+
+
+def test_in_flight_402_without_retry_after_aborts(monkeypatch):
+    decision, requests, sleeps = run_responses(
+        monkeypatch,
+        [402],
+        max_wait=180,
+        error_metadata={"limit_source": "openrouter_in_flight_budget"},
+    )
+    assert decision.parse_error and len(requests) == 1 and not sleeps
+
+
+@pytest.mark.parametrize("delay", ["not-a-delay", "NaN", "inf"])
+def test_in_flight_402_invalid_delay_is_not_retried(monkeypatch, delay):
+    decision, requests, sleeps = run_responses(
+        monkeypatch,
+        [402],
+        retry_after=delay,
+        max_wait=180,
+        error_metadata={"limit_source": "openrouter_in_flight_budget"},
+    )
+    assert decision.parse_error and len(requests) == 1 and not sleeps

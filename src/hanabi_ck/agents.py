@@ -4,6 +4,7 @@ import json
 import os
 import random
 import re
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -1199,25 +1200,51 @@ indices in ascending order. Do not explain your answer."""
                         entry["retry_after"] = response.headers.get("Retry-After")
                     if attempts is not None:
                         attempts.append(entry)
-                    if response.status_code not in {429, 503} or attempt == self.http_max_retries:
+                    metadata = ((data or {}).get("error") or {}).get("metadata") or {}
+                    in_flight_budget = (
+                        response.status_code == 402
+                        and metadata.get("limit_source") == "openrouter_in_flight_budget"
+                    )
+                    retryable = response.status_code in {429, 503} or in_flight_budget
+                    if not retryable or attempt == self.http_max_retries:
                         break
                     wait_s = min(self.http_retry_backoff_s * (2 ** attempt),
                                  self.http_retry_max_wait_s)
                     retry_after = response.headers.get("Retry-After")
+                    if not retry_after and in_flight_budget:
+                        retry_after = (metadata.get("headers") or {}).get("Retry-After")
+                        entry["retry_after"] = retry_after
+                    if in_flight_budget and not retry_after:
+                        # Never guess when an in-flight reservation can be retried.
+                        break
                     if retry_after:
                         try:
-                            wait_s = max(0.0, float(retry_after))
+                            wait_s = float(retry_after)
                         except ValueError:
                             try:
                                 wait_s = max(0.0, (parsedate_to_datetime(retry_after)
                                                   - datetime.now(timezone.utc)).total_seconds())
                             except (ValueError, TypeError, OverflowError):
-                                pass
+                                if in_flight_budget:
+                                    break
+                    if wait_s != wait_s or wait_s == float("inf"):
+                        break
+                    wait_s = max(0.0, wait_s)
                     # Do not retry earlier than a provider's requested delay.
                     if wait_s > self.http_retry_max_wait_s:
                         break
                     entry["wait_before_retry_s"] = wait_s
-                    time.sleep(wait_s)
+                    print(
+                        f"HTTP {response.status_code}: retry {attempt + 1}/"
+                        f"{self.http_max_retries} in {wait_s:g}s",
+                        file=sys.stderr, flush=True,
+                    )
+                    # Split long waits into short sleeps without retrying early.
+                    remaining_wait = wait_s
+                    while remaining_wait > 0:
+                        chunk = min(remaining_wait, 60.0)
+                        time.sleep(chunk)
+                        remaining_wait -= chunk
                 response.raise_for_status()
                 data = response.json()
 

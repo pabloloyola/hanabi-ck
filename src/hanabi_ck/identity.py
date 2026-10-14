@@ -152,6 +152,86 @@ def analyze_identity_suite(manifest_path: str | Path) -> dict[str, Any]:
     return {
         "cells": cells,
         "missing_cells": missing,
+        "previous_attempts": {
+            c["cell"]: c["previous_attempts"]
+            for c in manifest["cells"]
+            if c.get("previous_attempts")
+        },
         "paired": paired,
         "interpretation": "Descriptive identity-disclosure pilot; no CK or significance claim.",
     }
+
+
+def recover_identity_suite(
+    manifest_path: str | Path,
+    output: str | Path,
+    *,
+    attempt_tag: str = "retry01",
+    max_wait_s: float = 180,
+) -> dict[str, Any]:
+    """Prepare fresh attempts for incomplete smoke cells; retain completed results."""
+    import re
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", attempt_tag):
+        raise ValueError("attempt_tag must use letters, digits, underscores or hyphens")
+    if max_wait_s < 0:
+        raise ValueError("max_wait_s must be nonnegative")
+    manifest = json.loads(Path(manifest_path).read_text())
+    if len(manifest["seeds"]) != 1:
+        raise ValueError("Recovery currently requires a single-seed smoke manifest")
+    root = Path(output)
+    if root.exists() and any(root.iterdir()):
+        raise ValueError("Recovery output directory must be empty")
+    prepared = []
+    for cell in manifest["cells"]:
+        source = Path(cell["config_path"])
+        if hashlib.sha256(source.read_bytes()).hexdigest() != cell["config_sha256"]:
+            raise ValueError(f"Source config hash mismatch: {source}")
+        previous_path = Path(cell["summary_path"])
+        previous = json.loads(previous_path.read_text()) if previous_path.exists() else None
+        if previous is not None:
+            if previous.get("identity_config_sha256") != cell["config_sha256"]:
+                raise ValueError(f"Previous summary config hash mismatch: {previous_path}")
+            games = previous["games"]
+            if len(games) != 1 or games[0]["seed"] != manifest["seeds"][0]:
+                raise ValueError("Recovery requires one matching seed per cell")
+            if games[0].get("valid"):
+                continue
+            if not games[0].get("aborted"):
+                raise ValueError("Only aborted or missing cells can be recovered")
+        cfg = yaml.safe_load(source.read_text())
+        cfg["experiment"] += f"_{attempt_tag}"
+        for spec in cfg["agents"]:
+            spec["http_retry_max_wait_s"] = max_wait_s
+        new_summary = (
+            Path(cfg.get("output_dir", "runs")) / cfg["experiment"] / "summary.json"
+        ).resolve()
+        if new_summary.parent.exists():
+            raise ValueError(f"Recovery run directory already exists: {new_summary.parent}")
+        new_config = root / f"{cell['cell']}.yaml"
+        text = yaml.safe_dump(cfg, sort_keys=False)
+        replacement = deepcopy(cell)
+        replacement.update(
+            config_path=str(new_config.resolve()),
+            config_sha256=hashlib.sha256(text.encode()).hexdigest(),
+            summary_path=str(new_summary),
+        )
+        previous_attempt = {k: cell[k] for k in ("config_path", "config_sha256", "summary_path")}
+        previous_attempt["status"] = "aborted" if previous else "missing_summary"
+        replacement.setdefault("previous_attempts", []).append(previous_attempt)
+        prepared.append((new_config, text, replacement))
+    if not prepared:
+        raise ValueError("No aborted or missing cells to recover")
+    root.mkdir(parents=True, exist_ok=True)
+    replacements = {cell["cell"]: cell for _, _, cell in prepared}
+    for path, text, _ in prepared:
+        path.write_text(text)
+    manifest["cells"] = [replacements.get(cell["cell"], cell) for cell in manifest["cells"]]
+    manifest["recovery_of"] = str(Path(manifest_path).resolve())
+    manifest["recovery_policy"] = {
+        "attempt_tag": attempt_tag,
+        "max_wait_s": max_wait_s,
+        "prepared_cells": list(replacements),
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    return manifest

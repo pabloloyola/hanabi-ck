@@ -5,7 +5,7 @@ import json
 
 from .action_check import check_hanabi_action
 from .api_check import check_openai_compatible_api, format_api_check
-from .identity import analyze_identity_suite, prepare_identity_suite
+from .identity import analyze_identity_suite, prepare_identity_suite, recover_identity_suite
 from .inspection import inspect_log
 from .micro_runner import run_micro_experiment
 from .pair_micro_runner import run_pair_micro_experiment
@@ -90,6 +90,14 @@ def main() -> None:
     )
     action_check.add_argument("--seed", type=int, default=0)
     action_check.add_argument("--action-schema", choices=["enum", "bounds"])
+
+    identity_recover = sub.add_parser(
+        "identity-recover", help="Prepare fresh aborted/missing cell attempts"
+    )
+    identity_recover.add_argument("manifest")
+    identity_recover.add_argument("--output", required=True)
+    identity_recover.add_argument("--attempt-tag", default="retry01")
+    identity_recover.add_argument("--max-wait", type=float, default=180)
 
     args = parser.parse_args()
 
@@ -185,6 +193,11 @@ def main() -> None:
         )
     elif args.command == "identity-prepare":
         print(json.dumps(prepare_identity_suite(args.config, args.output), indent=2))
+    elif args.command == "identity-recover":
+        report = recover_identity_suite(
+            args.manifest, args.output, attempt_tag=args.attempt_tag, max_wait_s=args.max_wait,
+        )
+        print(json.dumps(report["recovery_policy"], indent=2))
     elif args.command == "identity-analyze":
         print(json.dumps(analyze_identity_suite(args.manifest), indent=2))
     elif args.command == "action-check":

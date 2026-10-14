@@ -248,3 +248,46 @@ uv run hanabi-ck replay-audit \
 Audit one completed game before starting the other cells. Then analyze the
 manifest in the new generated directory. AA games should also use the new
 study settings; do not substitute earlier AA results into this manifest.
+
+## Recover an aborted smoke cell without replacing completed results
+
+The user's AB_named game aborted at turn4 with HTTP402 carrying
+`limit_source: openrouter_in_flight_budget` and Retry-After120. This is a transient
+reservation limit, distinct from ordinary credit/key-budget failures. Action calls
+now retry this exact subtype only when a Retry-After delay is provided. Other402s
+still abort. The original request and provider route remain unchanged; retries
+and waits are logged, and a short retry notice is printed to stderr. Long waits
+are split into60-second sleeps while respecting the full requested delay.
+
+The original smoke configs cap each retry wait at60seconds, so prepare recovery
+configs with a180-second cap. Do not edit existing generated configs or logs:
+
+```bash
+uv run hanabi-ck identity-recover \
+  configs/generated_identity_smoke_gemini36_bounds/manifest.json \
+  --output configs/generated_identity_smoke_gemini36_recovery1
+uv run hanabi-ck run configs/generated_identity_smoke_gemini36_recovery1/AB_named.yaml
+```
+
+For the current user's state this creates AB_named, BA_hidden, and BA_named
+configs with experiment suffix `_retry01`, preserving the five valid cells in
+the replacement manifest. No requests are made during preparation. Recovery
+supports single-seed smoke manifests; mixed multi-seed cells are refused.
+It reruns the whole aborted game as a new attempt, rather than resuming its
+partial trajectory. Source config and summary hashes are checked, and prior
+attempt paths/status remain visible in `identity-analyze` output.
+
+If AB_named completes, run the remaining two new configs:
+
+```bash
+for cell in BA_hidden BA_named; do
+  uv run hanabi-ck run "configs/generated_identity_smoke_gemini36_recovery1/${cell}.yaml" || break
+done
+uv run hanabi-ck identity-analyze \
+  configs/generated_identity_smoke_gemini36_recovery1/manifest.json
+```
+
+The comparison combines retained complete cells with separately recorded recovery
+attempts. Report the excluded original abort and operational retry-policy change.
+A repeated in-flight error remains bounded by the retry count and wait cap; it
+does not trigger provider switching, action fallback, or credit-error retries.

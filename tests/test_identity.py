@@ -153,3 +153,53 @@ def test_analysis_pairs_only_valid_completed_seeds(tmp_path):
     assert report["paired"]["AA"]["mean_score_difference"] == 1
     assert len(report["missing_cells"]) == 6
     assert report["cells"]["AA_hidden"]["aggregate"]["n_aborted_games"] == 1
+
+
+def test_recovery_preserves_completed_cells_and_failed_recordings(tmp_path):
+    from hanabi_ck.identity import recover_identity_suite
+
+    source = tmp_path / "suite.yaml"
+    source.write_text(
+        yaml.safe_dump(
+            {
+                "experiment": "identity",
+                "seeds": [0],
+                "models": dict(zip("AB", SPECS)),
+                "game": {"output_dir": str(tmp_path / "runs")},
+            }
+        )
+    )
+    prepared = tmp_path / "prepared"
+    manifest = prepare_identity_suite(source, prepared)
+    for i, cell in enumerate(manifest["cells"][:2]):
+        path = Path(cell["summary_path"])
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "identity_config_sha256": cell["config_sha256"],
+                    "games": [{"seed": 0, "valid": i == 0, "aborted": i == 1}],
+                }
+            )
+        )
+    failed = Path(manifest["cells"][1]["summary_path"])
+    failed_bytes = failed.read_bytes()
+    cfg_bytes = Path(manifest["cells"][1]["config_path"]).read_bytes()
+    recovery = recover_identity_suite(prepared / "manifest.json", tmp_path / "recovery")
+    assert recovery["cells"][0] == manifest["cells"][0]
+    assert "AA_named" in recovery["recovery_policy"]["prepared_cells"]
+    replacement = recovery["cells"][1]
+    config = yaml.safe_load(Path(replacement["config_path"]).read_text())
+    assert config["experiment"].endswith("_retry01")
+    assert all(a["http_retry_max_wait_s"] == 180 for a in config["agents"])
+    original = yaml.safe_load(cfg_bytes)
+    for agent in original["agents"]:
+        agent["http_retry_max_wait_s"] = 180
+    original["experiment"] += "_retry01"
+    assert config == original
+    assert failed.read_bytes() == failed_bytes
+    assert Path(manifest["cells"][1]["config_path"]).read_bytes() == cfg_bytes
+    assert replacement["previous_attempts"][0]["summary_path"] == str(failed)
+    assert replacement["previous_attempts"][0]["status"] == "aborted"
+    with pytest.raises(ValueError, match="empty"):
+        recover_identity_suite(prepared / "manifest.json", tmp_path / "recovery")
