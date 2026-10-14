@@ -224,3 +224,27 @@ not modify generated configs or manifests. It cannot be used to change the
 schema while claiming exact recorded-request identity via `--log`.
 If bounds works, prepare a new study version with the selected schema setting;
 do not edit already-generated experiment cells midway through a batch.
+
+### Bounds-based Gemini study (v2)
+
+The user's bounds diagnostic succeeded in2.409s and selected a valid rank1 hint.
+This establishes that this request worked; it is not yet proof of full-game
+reliability or that enum handling caused every earlier failure.
+
+New `identity_disclosure_openrouter_gemini36_bounds_smoke.yaml` / `_pilot.yaml`
+sources set `action_index_schema: bounds` for both A and B, so the output encoding
+is held fixed across models and identity conditions. New experiment names end
+`gpt54_gemini36_v2_bounds`. Preserve the previous enum-based configs/recordings.
+
+```bash
+uv run hanabi-ck identity-prepare \
+  configs/identity_disclosure_openrouter_gemini36_bounds_smoke.yaml \
+  --output configs/generated_identity_smoke_gemini36_bounds
+uv run hanabi-ck run configs/generated_identity_smoke_gemini36_bounds/BB_hidden.yaml
+uv run hanabi-ck replay-audit \
+  runs/identity_disclosure_smoke_gpt54_gemini36_v2_bounds_BB_hidden/ck0/seed_000000.jsonl
+```
+
+Audit one completed game before starting the other cells. Then analyze the
+manifest in the new generated directory. AA games should also use the new
+study settings; do not substitute earlier AA results into this manifest.
