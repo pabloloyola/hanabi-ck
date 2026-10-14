@@ -365,6 +365,7 @@ class OpenAICompatibleAgent:
         extra_body: dict[str, Any] | None = None,
         structured_output: bool = False,
         mechanical_scaffold: str = "derived",
+        action_index_schema: str = "enum",
         record_http_attempts: bool = False,
         http_max_retries: int = 0,
         http_retry_backoff_s: float = 10.0,
@@ -403,6 +404,9 @@ class OpenAICompatibleAgent:
         self.extra_body = dict(extra_body or {})
         if http_max_retries < 0 or http_retry_backoff_s < 0 or http_retry_max_wait_s < 0:
             raise ValueError("HTTP retry settings must be nonnegative")
+        if action_index_schema not in {"enum", "bounds"}:
+            raise ValueError("action_index_schema must be enum or bounds")
+        self.action_index_schema = action_index_schema
         self.record_http_attempts = record_http_attempts
         self.http_max_retries = http_max_retries
         self.http_retry_backoff_s = http_retry_backoff_s
@@ -502,6 +506,13 @@ Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
             payload["max_tokens"] = self.max_tokens
 
         if self.structured_output:
+            index_schema: dict[str, Any] = {"type": "integer"}
+            if self.action_index_schema == "enum":
+                index_schema["enum"] = list(range(len(legal_actions)))
+            else:
+                if not legal_actions:
+                    raise ValueError("Cannot select from an empty legal action list")
+                index_schema.update(minimum=0, maximum=len(legal_actions) - 1)
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -510,10 +521,7 @@ Return ONLY JSON of the form {"action_index": N}. Do not explain your choice."""
                     "schema": {
                         "type": "object",
                         "properties": {
-                            "action_index": {
-                                "type": "integer",
-                                "enum": list(range(len(legal_actions))),
-                            }
+                            "action_index": index_schema
                         },
                         "required": ["action_index"],
                         "additionalProperties": False,

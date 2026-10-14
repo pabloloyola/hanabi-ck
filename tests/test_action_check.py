@@ -148,9 +148,12 @@ def test_sends_original_prompt_text_from_sorted_log(tmp_path, monkeypatch):
 def test_format_failure_reports_raw_answer(tmp_path, monkeypatch):
     path, _ = config(tmp_path)
     monkeypatch.setattr(
-        OpenAICompatibleAgent, "act",
+        OpenAICompatibleAgent,
+        "act",
         lambda *args, **kwargs: AgentDecision(
-            action=None, raw_response='{"wrong_field": 0}', response_channel="content",
+            action=None,
+            raw_response='{"wrong_field": 0}',
+            response_channel="content",
             parse_error="invalid action fields",
         ),
     )
@@ -158,3 +161,44 @@ def test_format_failure_reports_raw_answer(tmp_path, monkeypatch):
     assert not report["ok"]
     assert report["raw_response"] == '{"wrong_field": 0}'
     assert report["response_channel"] == "content"
+
+
+def test_bounds_schema_changes_only_response_schema(tmp_path, monkeypatch):
+    path, cfg = config(tmp_path)
+    calls = []
+
+    def act(self, obs, legal, instruction):
+        payload = self._request_payload(obs, legal, instruction)
+        calls.append((payload, len(legal)))
+        return AgentDecision(action=legal[0])
+
+    monkeypatch.setattr(OpenAICompatibleAgent, "act", act)
+    check_hanabi_action(path)
+    report = check_hanabi_action(path, action_index_schema="bounds")
+    assert report["action_index_schema"] == "bounds"
+    enum_payload, count = calls[0]
+    bounds_payload, _ = calls[1]
+    assert enum_payload["messages"] == bounds_payload["messages"]
+    schema = bounds_payload["response_format"]["json_schema"]["schema"]
+    index = schema["properties"]["action_index"]
+    assert index == {"type": "integer", "minimum": 0, "maximum": count - 1}
+    assert (
+        list(range(index["minimum"], index["maximum"] + 1))
+        == enum_payload["response_format"]["json_schema"]["schema"]["properties"]["action_index"][
+            "enum"
+        ]
+    )
+    assert schema["required"] == ["action_index"]
+    assert schema["additionalProperties"] is False
+
+
+def test_bounds_override_does_not_bypass_recorded_request_guard(tmp_path, monkeypatch):
+    path, cfg = config(tmp_path)
+    log = make_log(tmp_path, cfg)
+    monkeypatch.setattr(
+        OpenAICompatibleAgent,
+        "act",
+        lambda *args, **kwargs: pytest.fail("Must not send changed request"),
+    )
+    with pytest.raises(ValueError, match="beyond provider"):
+        check_hanabi_action(path, log_path=log, action_index_schema="bounds")

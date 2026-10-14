@@ -203,3 +203,24 @@ This is a single initial-state decision for the new model. Do not supply the
 DeepSeek `--log`: route diagnostics intentionally reject a model change. If the
 check passes, audit one full BB_hidden game before continuing the eight-cell grid.
 The `api-check` command is available if diagnosing simple schema/auth failures.
+
+### Gemini empty-object schema diagnostic
+
+Two Gemini action checks returned HTTP200 but failed action validation; the
+second exposed an empty object `{}`. This is not a valid decision. The cause is
+not established. Google documents numeric minimum/maximum constraints, so test
+an equivalent action-index schema without an integer enum:
+
+```bash
+uv run hanabi-ck action-check \
+  configs/generated_identity_smoke_gemini36/BB_hidden.yaml --action-schema bounds
+```
+
+For N legal actions, `enum: [0, ..., N-1]` and integer bounds0..N-1 permit the
+same values. `action_index` remains required, extra fields remain forbidden, and
+the existing local validator still rejects empty/invalid/out-of-range responses.
+The default remains enum for all existing configs. The diagnostic override does
+not modify generated configs or manifests. It cannot be used to change the
+schema while claiming exact recorded-request identity via `--log`.
+If bounds works, prepare a new study version with the selected schema setting;
+do not edit already-generated experiment cells midway through a batch.

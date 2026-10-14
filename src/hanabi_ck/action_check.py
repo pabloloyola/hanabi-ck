@@ -21,6 +21,7 @@ def check_hanabi_action(
     *,
     log_path: str | Path | None = None,
     seed: int = 0,
+    action_index_schema: str | None = None,
 ) -> dict[str, Any]:
     cfg = load_config(config_path)
     specs = [dict(s) for s in cfg["agents"]]
@@ -68,6 +69,8 @@ def check_hanabi_action(
         raise ValueError("action-check requires an openai_compatible agent")
     # Exactly one HTTP attempt: no hidden retries or game execution.
     spec = dict(specs[player], http_max_retries=0)
+    if action_index_schema is not None:
+        spec["action_index_schema"] = action_index_schema
     agent = _build_agent(spec, seed=seed)
     payload = agent._request_payload(observation, legal, instruction)
     if original is not None:
@@ -103,6 +106,7 @@ def check_hanabi_action(
         "source": source,
         "model": spec["model"],
         "configured_provider": payload.get("provider"),
+        "action_index_schema": agent.action_index_schema,
         "returned_model": data.get("model"),
         "returned_provider": data.get("provider"),
         "elapsed_s": round(time.monotonic() - started, 3),

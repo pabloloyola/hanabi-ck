@@ -49,6 +49,7 @@ def _build_agent(spec: dict[str, Any], *, seed: int):
             ),
             extra_body=dict(spec.get("extra_body") or {}),
             structured_output=bool(spec.get("structured_output", False)),
+            action_index_schema=str(spec.get("action_index_schema", "enum")),
             http_max_retries=int(spec.get("http_max_retries", 0)),
             http_retry_backoff_s=float(spec.get("http_retry_backoff_s", 10)),
             http_retry_max_wait_s=float(spec.get("http_retry_max_wait_s", 60)),

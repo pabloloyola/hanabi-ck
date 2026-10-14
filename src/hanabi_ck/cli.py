@@ -89,6 +89,7 @@ def main() -> None:
         "--log", help="Reuse the last failed decision; change only provider routing"
     )
     action_check.add_argument("--seed", type=int, default=0)
+    action_check.add_argument("--action-schema", choices=["enum", "bounds"])
 
     args = parser.parse_args()
 
@@ -187,7 +188,10 @@ def main() -> None:
     elif args.command == "identity-analyze":
         print(json.dumps(analyze_identity_suite(args.manifest), indent=2))
     elif args.command == "action-check":
-        report = check_hanabi_action(args.config, log_path=args.log, seed=args.seed)
+        report = check_hanabi_action(
+            args.config, log_path=args.log, seed=args.seed,
+            action_index_schema=args.action_schema,
+        )
         print(json.dumps(report, indent=2))
         if not report["ok"]:
             raise SystemExit(1)
