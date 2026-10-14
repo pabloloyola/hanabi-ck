@@ -173,3 +173,33 @@ BB_hidden full game and audit it before continuing. A successful single request
 only establishes that this request worked; provider causation requires replicated
 matched route checks. If it fails, inspect the error or HTTP body before changing
 model, token budget, timeout, or schema settings.
+
+## Replacement B candidate: Gemini 3.6 Flash
+
+The user's third DeepSeek route check (GMICloud) returned404 at Filter by Parameters.
+The response does not identify the incompatible parameter. Do not remove strict
+structured output simply to make a route pass. This differs from the DeepInfra
+429/shared-pool overload and Venice429/timeout observations.
+
+New `identity_disclosure_openrouter_gemini36_smoke.yaml` and `_pilot.yaml` sources
+keep A as GPT-5.4 and set B to `google/gemini-3.6-flash`, pinned to Google AI Studio.
+Both use low reasoning effort, though that does not imply equal reasoning compute.
+Other game settings and full logging remain fixed. This is a new model-pair study;
+its data must not be pooled with the DeepSeek setup as if B were unchanged.
+Gemini's structured-output capability and listed provider are documented, but its
+availability on the user's account and actual Hanabi performance still need testing.
+Roughly similar ability is desirable for interpretation, not an assumption or a
+logical requirement of identity disclosure. Assess AA/BB hidden baseline scores
+across multiple seeds before describing the models as comparable.
+
+```bash
+uv run hanabi-ck identity-prepare \
+  configs/identity_disclosure_openrouter_gemini36_smoke.yaml \
+  --output configs/generated_identity_smoke_gemini36
+uv run hanabi-ck action-check configs/generated_identity_smoke_gemini36/BB_hidden.yaml
+```
+
+This is a single initial-state decision for the new model. Do not supply the
+DeepSeek `--log`: route diagnostics intentionally reject a model change. If the
+check passes, audit one full BB_hidden game before continuing the eight-cell grid.
+The `api-check` command is available if diagnosing simple schema/auth failures.

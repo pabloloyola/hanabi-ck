@@ -1,0 +1,48 @@
+# New model-pair study; preserve all DeepSeek runs.
+experiment: identity_disclosure_smoke_gpt54_gemini36_v1
+seeds:
+- 0
+game:
+  output_dir: runs
+  backend: native
+  mechanical_scaffold: derived
+models:
+  A:
+    type: openai_compatible
+    model: openai/gpt-5.4
+    base_url: https://openrouter.ai/api/v1
+    temperature: null
+    timeout_s: 180
+    max_tokens: 16384
+    structured_output: true
+    http_max_retries: 3
+    http_retry_backoff_s: 10
+    http_retry_max_wait_s: 60
+    extra_body:
+      provider:
+        order:
+        - openai
+        allow_fallbacks: false
+      reasoning:
+        effort: low
+  B:
+    type: openai_compatible
+    model: google/gemini-3.6-flash
+    base_url: https://openrouter.ai/api/v1
+    temperature: 0.0
+    timeout_s: 180
+    max_tokens: 16384
+    structured_output: true
+    http_max_retries: 3
+    http_retry_backoff_s: 10
+    http_retry_max_wait_s: 60
+    extra_body:
+      provider:
+        order:
+        - google-ai-studio
+        only:
+        - google-ai-studio
+        require_parameters: true
+        allow_fallbacks: false
+      reasoning:
+        effort: low
