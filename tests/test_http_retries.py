@@ -77,3 +77,25 @@ def test_default_keeps_single_request(monkeypatch):
     decision, requests, sleeps = run_responses(monkeypatch, [429], retries=0)
     assert len(requests) == 1 and not sleeps
     assert decision.http_attempts is None
+
+
+def test_timeout_is_recorded_and_not_retried(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise httpx.ReadTimeout("test timeout", request=request)
+
+    original = httpx.Client
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "hanabi_ck.agents.httpx.Client", lambda **kw: original(transport=transport, **kw)
+    )
+    agent = OpenAICompatibleAgent(name="test", model="model", api_key="test", http_max_retries=3)
+    game = HanabiGame(num_players=2, seed=0)
+    decision = agent.act(game.observe(0), game.legal_actions(0), "test")
+    assert len(calls) == 1
+    assert decision.http_attempts[0]["status_code"] is None
+    assert "ReadTimeout" in decision.http_attempts[0]["error"]
+    assert decision.http_attempts[0]["retried"] is False
+    assert decision.http_attempts[0]["elapsed_s"] >= 0

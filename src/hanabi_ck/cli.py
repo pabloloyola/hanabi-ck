@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from .action_check import check_hanabi_action
 from .api_check import check_openai_compatible_api, format_api_check
 from .identity import analyze_identity_suite, prepare_identity_suite
 from .inspection import inspect_log
@@ -81,6 +82,13 @@ def main() -> None:
         "identity-analyze", help="Compare matched identity study games"
     )
     identity_analyze.add_argument("manifest")
+
+    action_check = sub.add_parser("action-check", help="Test one real Hanabi model decision")
+    action_check.add_argument("config")
+    action_check.add_argument(
+        "--log", help="Reuse the last failed decision; change only provider routing"
+    )
+    action_check.add_argument("--seed", type=int, default=0)
 
     args = parser.parse_args()
 
@@ -178,6 +186,11 @@ def main() -> None:
         print(json.dumps(prepare_identity_suite(args.config, args.output), indent=2))
     elif args.command == "identity-analyze":
         print(json.dumps(analyze_identity_suite(args.manifest), indent=2))
+    elif args.command == "action-check":
+        report = check_hanabi_action(args.config, log_path=args.log, seed=args.seed)
+        print(json.dumps(report, indent=2))
+        if not report["ok"]:
+            raise SystemExit(1)
     elif args.command == "api-check":
         report = check_openai_compatible_api(args.config)
         print(format_api_check(report))

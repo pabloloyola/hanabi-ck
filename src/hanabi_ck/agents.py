@@ -365,6 +365,7 @@ class OpenAICompatibleAgent:
         extra_body: dict[str, Any] | None = None,
         structured_output: bool = False,
         mechanical_scaffold: str = "derived",
+        record_http_attempts: bool = False,
         http_max_retries: int = 0,
         http_retry_backoff_s: float = 10.0,
         http_retry_max_wait_s: float = 60.0,
@@ -402,6 +403,7 @@ class OpenAICompatibleAgent:
         self.extra_body = dict(extra_body or {})
         if http_max_retries < 0 or http_retry_backoff_s < 0 or http_retry_max_wait_s < 0:
             raise ValueError("HTTP retry settings must be nonnegative")
+        self.record_http_attempts = record_http_attempts
         self.http_max_retries = http_max_retries
         self.http_retry_backoff_s = http_retry_backoff_s
         self.http_retry_max_wait_s = http_retry_max_wait_s
@@ -1148,7 +1150,9 @@ indices in ascending order. Do not explain your answer."""
         raw = ""
         data: dict[str, Any] | None = None
         payload: dict[str, Any] | None = None
-        attempts: list[dict[str, Any]] | None = [] if self.http_max_retries else None
+        attempts: list[dict[str, Any]] | None = (
+            [] if self.http_max_retries or self.record_http_attempts else None
+        )
         try:
             payload = self._request_payload(
                 observation,
@@ -1158,11 +1162,23 @@ indices in ascending order. Do not explain your answer."""
             headers = {"Authorization": f"Bearer {self.api_key}"}
             with httpx.Client(timeout=self.timeout_s) as client:
                 for attempt in range(self.http_max_retries + 1):
-                    response = client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=payload,
-                    )
+                    started = time.monotonic()
+                    try:
+                        response = client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=payload,
+                        )
+                    except httpx.TransportError as exc:
+                        if attempts is not None:
+                            attempts.append({
+                                "attempt": attempt + 1,
+                                "status_code": None,
+                                "error": f"{type(exc).__name__}: {exc}",
+                                "elapsed_s": round(time.monotonic() - started, 3),
+                                "retried": False,
+                            })
+                        raise
                     entry: dict[str, Any] = {"attempt": attempt + 1,
                                              "status_code": response.status_code}
                     if response.is_error:

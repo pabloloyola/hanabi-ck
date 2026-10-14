@@ -569,3 +569,14 @@ Attempt/errorbody metadata is logged; truncations and parse failures are not
 retried. Other configs default to zero retries. CLI run exits1 on aborted games.
 Preserve v1 data and prepare v2 into a new directory. No paid requests were run
 by the assistant during the fix.
+
+
+### Route diagnostic (2026-10-14)
+
+User v2 BB_hidden aborted at turn3 with ReadTimeout, not confirmed429.
+Added transport-failure attempt metadata without timeout retries. New action-check
+can reuse the last agent_error observation/private instruction/legal actions; it
+verifies payload identity except provider before sending one request. Never
+executes a game action or modifies source logs. New v3 DeepInfra source configs
+preserve v2 settings except B provider pin/parameter enforcement. User must run
+the diagnostic with their API key; assistant did not make paid requests.

@@ -131,3 +131,43 @@ is zero retries, so other experiment configs keep their single-attempt behavior.
 `run ... || break` therefore stops a sequential batch at the first abort.
 Use the new v2 generated directory/experiment names, rather than editing v1
 configs or overwriting v1 logs. Recreate all comparison cells under v2 controls.
+
+## One-action route diagnostic (v3 DeepInfra)
+
+The user's v2 BB_hidden game stopped at turn 3 with ReadTimeout after a
+180-second read wait. No response status arrived. This does not locate the
+failure to one particular service. Transport errors are now recorded as
+attempts with `status_code: null`, error text, elapsed time, and `retried: false`;
+they remain nonretryable. HTTP 429/503 retries retain the existing policy.
+
+OpenRouter lists DeepInfra as an alternative for the same model ID. Separate
+`identity_disclosure_openrouter_deepinfra_smoke.yaml` and `_pilot.yaml` sources
+pin B to DeepInfra with `only`, disable fallback, and require parameter support.
+Other model/decoding settings and the 180-second timeout are unchanged. Do not
+assume that availability guarantees schema support or reliable long-game service;
+the action check tests this on the user's account. Keep all v1/v2 files and runs.
+
+```bash
+uv run hanabi-ck identity-prepare \
+  configs/identity_disclosure_openrouter_deepinfra_smoke.yaml \
+  --output configs/generated_identity_smoke_v3_deepinfra
+
+uv run hanabi-ck action-check \
+  configs/generated_identity_smoke_v3_deepinfra/BB_hidden.yaml \
+  --log runs/identity_disclosure_smoke_v2_BB_hidden/ck0/seed_000000.jsonl
+```
+
+This sends exactly one HTTP request for the previously failed decision. It
+uses only its recorded observation, legal actions, and private instruction,
+never researcher hidden state. Before sending, it verifies the rebuilt payload
+matches the recorded request except for `provider`. Any other change is refused.
+No game action is executed, no existing log is modified, and no retries are used.
+The diagnostic output reports elapsed time, action/error, actual returned provider,
+usage, and attempt telemetry. It is not an experimental game or a resumed turn.
+Without `--log`, `action-check CONFIG --seed 0` checks one initial-state decision.
+
+If the check passes and the returned provider is DeepInfra, run one new v3
+BB_hidden full game and audit it before continuing. A successful single request
+only establishes that this request worked; provider causation requires replicated
+matched route checks. If it fails, inspect the error or HTTP body before changing
+model, token budget, timeout, or schema settings.
