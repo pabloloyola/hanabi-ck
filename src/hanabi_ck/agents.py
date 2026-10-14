@@ -1146,6 +1146,8 @@ indices in ascending order. Do not explain your answer."""
         observation: PlayerObservation,
         legal_actions: list[Action],
         private_instruction: str,
+        *,
+        prepared_payload: dict[str, Any] | None = None,
     ) -> AgentDecision:
         raw = ""
         data: dict[str, Any] | None = None
@@ -1154,10 +1156,9 @@ indices in ascending order. Do not explain your answer."""
             [] if self.http_max_retries or self.record_http_attempts else None
         )
         try:
-            payload = self._request_payload(
-                observation,
-                legal_actions,
-                private_instruction,
+            payload = (
+                prepared_payload if prepared_payload is not None
+                else self._request_payload(observation, legal_actions, private_instruction)
             )
             headers = {"Authorization": f"Bearer {self.api_key}"}
             with httpx.Client(timeout=self.timeout_s) as client:

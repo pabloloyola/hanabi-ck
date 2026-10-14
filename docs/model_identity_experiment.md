@@ -160,7 +160,9 @@ uv run hanabi-ck action-check \
 This sends exactly one HTTP request for the previously failed decision. It
 uses only its recorded observation, legal actions, and private instruction,
 never researcher hidden state. Before sending, it verifies the rebuilt payload
-matches the recorded request except for `provider`. Any other change is refused.
+matches the recorded request except for `provider`, comparing embedded user JSON
+by content because logs sort nested keys. It then sends the original recorded
+prompt text verbatim with only provider routing replaced. Any other change is refused.
 No game action is executed, no existing log is modified, and no retries are used.
 The diagnostic output reports elapsed time, action/error, actual returned provider,
 usage, and attempt telemetry. It is not an experimental game or a resumed turn.

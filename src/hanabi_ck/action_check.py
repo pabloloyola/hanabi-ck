@@ -71,15 +71,32 @@ def check_hanabi_action(
     agent = _build_agent(spec, seed=seed)
     payload = agent._request_payload(observation, legal, instruction)
     if original is not None:
-        def strip_provider(p):
-            return {k: v for k, v in p.items() if k != "provider"}
-        if strip_provider(original) != strip_provider(payload):
+        def normalized_request(p):
+            normalized = json.loads(json.dumps(p))
+            normalized.pop("provider", None)
+            for message in normalized.get("messages", []):
+                if message.get("role") == "user" and isinstance(message.get("content"), str):
+                    try:
+                        message["content"] = json.loads(message["content"])
+                    except json.JSONDecodeError:
+                        pass
+            return normalized
+
+        if normalized_request(original) != normalized_request(payload):
             raise ValueError("Check request differs from recorded request beyond provider routing")
+        # The logger sorts nested object keys, so reconstruction can change JSON
+        # text ordering. After validating content, send the original prompt text.
+        payload = {**original, "provider": payload.get("provider")}
+        if payload["provider"] is None:
+            payload.pop("provider")
     # Collect attempt telemetry without permitting retries.
     # act's telemetry is enabled independently of retries for this diagnostic.
     agent.record_http_attempts = True
     started = time.monotonic()
-    decision = agent.act(observation, legal, instruction)
+    decision = (
+        agent.act(observation, legal, instruction, prepared_payload=payload)
+        if original is not None else agent.act(observation, legal, instruction)
+    )
     data = decision.api_response or {}
     return {
         "config": str(config_path),

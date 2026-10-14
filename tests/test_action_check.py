@@ -35,7 +35,7 @@ def test_initial_check_makes_one_action_without_game_mutation(tmp_path, monkeypa
     path, _ = config(tmp_path)
     calls = []
 
-    def act(self, obs, legal, instruction):
+    def act(self, obs, legal, instruction, **kwargs):
         calls.append((obs, instruction, self.http_max_retries, self.record_http_attempts))
         return AgentDecision(
             action=legal[0], api_response={"model": "test-model", "provider": "DeepInfra"}
@@ -67,7 +67,8 @@ def make_log(tmp_path, cfg):
                 "legal_actions": [a.to_dict() for a in legal],
                 "private_instruction": "original identity instruction",
                 "request_payload": payload,
-            }
+            },
+            sort_keys=True,
         )
         + "\n"
     )
@@ -79,13 +80,19 @@ def test_reuses_failed_observation_and_instruction(tmp_path, monkeypatch):
     log = make_log(tmp_path, cfg)
     calls = []
 
-    def act(self, obs, legal, instruction):
-        calls.append(instruction)
+    def act(self, obs, legal, instruction, **kwargs):
+        calls.append((instruction, kwargs["prepared_payload"]))
         return AgentDecision(action=legal[0])
 
     monkeypatch.setattr(OpenAICompatibleAgent, "act", act)
     report = check_hanabi_action(path, log_path=log)
-    assert calls == ["original identity instruction"]
+    original = json.loads(log.read_text())["request_payload"]
+    assert calls[0][0] == "original identity instruction"
+    assert calls[0][1]["messages"] == original["messages"]
+    assert calls[0][1]["provider"] == {"only": ["deepinfra"]}
+    assert {k: v for k, v in calls[0][1].items() if k != "provider"} == {
+        k: v for k, v in original.items() if k != "provider"
+    }
     assert report["matches_original_except_provider"]
     assert report["source"]["turn"] == 3
 
@@ -100,3 +107,39 @@ def test_rejects_other_request_changes_before_call(tmp_path, monkeypatch):
     )
     with pytest.raises(ValueError, match="beyond provider"):
         check_hanabi_action(path, log_path=log)
+
+
+def test_sends_original_prompt_text_from_sorted_log(tmp_path, monkeypatch):
+    import httpx
+
+    path, cfg = config(tmp_path)
+    log = make_log(tmp_path, cfg)
+    original = json.loads(log.read_text())["request_payload"]
+    sent = []
+
+    def handler(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "provider": "DeepInfra",
+                "model": "test-model",
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": '{"action_index":0}'}}
+                ],
+            },
+        )
+
+    client_class = httpx.Client
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "hanabi_ck.agents.httpx.Client", lambda **kw: client_class(transport=transport, **kw)
+    )
+    before = log.read_bytes()
+    report = check_hanabi_action(path, log_path=log)
+    assert report["ok"] and len(sent) == 1
+    assert sent[0]["messages"] == original["messages"]
+    assert {k: v for k, v in sent[0].items() if k != "provider"} == {
+        k: v for k, v in original.items() if k != "provider"
+    }
+    assert log.read_bytes() == before
