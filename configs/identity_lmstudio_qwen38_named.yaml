@@ -1,0 +1,45 @@
+# Local same-model identity test. Keep LM Studio thinking toggles off.
+# Screenshot: reasoning effort Low; API support for that UI field is not assumed.
+# api_key is a local dummy, not a real credential.
+experiment: identity_lmstudio_qwen38_no_thinking_named_v1
+output_dir: runs
+num_players: 2
+backend: native
+seeds:
+- 0
+conditions:
+- ck0
+identity_disclosure: named
+mechanical_scaffold: derived
+agent_error_policy: abort
+log_private_instructions: true
+log_raw_model_responses: true
+log_request_payloads: true
+agents:
+- type: openai_compatible
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  api_key: lm-studio
+  temperature: 0.0
+  timeout_s: 300
+  max_tokens: 4096
+  structured_output: true
+  action_index_schema: bounds
+  http_max_retries: 0
+  extra_body: &id001
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
+  name: player_0
+- type: openai_compatible
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  api_key: lm-studio
+  temperature: 0.0
+  timeout_s: 300
+  max_tokens: 4096
+  structured_output: true
+  action_index_schema: bounds
+  http_max_retries: 0
+  extra_body: *id001
+  name: player_1
