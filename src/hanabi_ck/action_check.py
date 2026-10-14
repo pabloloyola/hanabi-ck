@@ -108,6 +108,8 @@ def check_hanabi_action(
         "elapsed_s": round(time.monotonic() - started, 3),
         "ok": decision.action is not None and decision.parse_error is None,
         "error": decision.parse_error,
+        "raw_response": decision.raw_response,
+        "response_channel": decision.response_channel,
         "action": decision.action.to_dict() if decision.action else None,
         "http_attempts": decision.http_attempts,
         "request_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(),

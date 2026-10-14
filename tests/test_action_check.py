@@ -143,3 +143,18 @@ def test_sends_original_prompt_text_from_sorted_log(tmp_path, monkeypatch):
         k: v for k, v in original.items() if k != "provider"
     }
     assert log.read_bytes() == before
+
+
+def test_format_failure_reports_raw_answer(tmp_path, monkeypatch):
+    path, _ = config(tmp_path)
+    monkeypatch.setattr(
+        OpenAICompatibleAgent, "act",
+        lambda *args, **kwargs: AgentDecision(
+            action=None, raw_response='{"wrong_field": 0}', response_channel="content",
+            parse_error="invalid action fields",
+        ),
+    )
+    report = check_hanabi_action(path)
+    assert not report["ok"]
+    assert report["raw_response"] == '{"wrong_field": 0}'
+    assert report["response_channel"] == "content"
