@@ -12,6 +12,7 @@ from .pair_micro_runner import run_pair_micro_experiment
 from .replay import export_replay
 from .replay_audit import audit_game, compare_to_reference, select_replay
 from .runner import run_experiment
+from .turn_diagnostic import diagnose_turn
 
 
 def main() -> None:
@@ -98,6 +99,14 @@ def main() -> None:
     identity_recover.add_argument("--output", required=True)
     identity_recover.add_argument("--attempt-tag", default="retry01")
     identity_recover.add_argument("--max-wait", type=float, default=180)
+
+    diagnostic = sub.add_parser("turn-diagnostic", help="Compare thinking and action order on a recorded turn")
+    diagnostic.add_argument("config")
+    diagnostic.add_argument("--log", required=True)
+    diagnostic.add_argument("--turn", type=int, required=True)
+    diagnostic.add_argument("--output", required=True)
+    diagnostic.add_argument("--repetitions", type=int, default=1)
+    diagnostic.add_argument("--order-seed", type=int, default=0)
 
     args = parser.parse_args()
 
@@ -200,6 +209,12 @@ def main() -> None:
         print(json.dumps(report["recovery_policy"], indent=2))
     elif args.command == "identity-analyze":
         print(json.dumps(analyze_identity_suite(args.manifest), indent=2))
+    elif args.command == "turn-diagnostic":
+        report = diagnose_turn(args.config, args.log, turn=args.turn, output=args.output,
+                               repetitions=args.repetitions, order_seed=args.order_seed)
+        print(json.dumps(report, indent=2))
+        if any(not r["ok"] for r in report["results"]):
+            raise SystemExit(1)
     elif args.command == "action-check":
         report = check_hanabi_action(
             args.config, log_path=args.log, seed=args.seed,

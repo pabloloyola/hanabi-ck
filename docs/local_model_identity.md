@@ -65,3 +65,25 @@ failed attempts with fresh experiment IDs rather than overwriting logs. If conte
 fills or inference slows as public history grows, capture the error and measured
 prompt-token usage before altering model/context settings. The server's loaded
 context must accommodate both the prompt and requested output allowance.
+# Diagnose thinking and action ordering on a fixed turn
+
+Use the recorded turn 2 rather than starting a new game. This makes four
+independent requests: thinking off/on, each with original/shuffled legal actions.
+The board, instructions, token budget and output schema stay fixed. The API
+request explicitly sets `enable_thinking`; the UI toggle alone does not verify
+that the template honors it. Preserve thinking is disabled for every call.
+
+```bash
+uv run hanabi-ck turn-diagnostic \
+  configs/identity_lmstudio_qwen38_hidden.yaml \
+  --log runs/identity_lmstudio_qwen38_no_thinking_hidden_v1/ck0/seed_000000.jsonl \
+  --turn 2 \
+  --output runs/qwen38_turn2_diagnostic_v1.jsonl
+```
+
+The output includes full requests and API responses, reasoning fields if returned,
+timings, errors and the mapping from presented indices to original indices.
+Every shuffled index moves. The four arms run in a reproducible randomized order;
+no game action is executed, no retry or fallback occurs, and existing output files
+are protected. Use a fresh output path and `--repetitions 3` for twelve calls.
+One call per arm is a diagnostic, not evidence of a stable performance difference.
