@@ -11,6 +11,7 @@ is**, and **why the architecture looks the way it does**.
 | [gpt54_scaffold_factorial_results.md](gpt54_scaffold_factorial_results.md) | canonical record of the current GPT-5.4 result |
 | [game_replay.md](game_replay.md) | export and share a step-by-step offline game replay |
 | [local_model_identity.md](local_model_identity.md) | LM Studio local identity smoke test |
+| [usage_evidence.md](usage_evidence.md) | calls, tokens and recorded model costs for funding evidence |
 | [model_identity_experiment.md](model_identity_experiment.md) | model pairing and identity disclosure study |
 | [experiments.md](experiments.md) | experiment families, configs, and recommended run order |
 | [hanabi_source_integration.md](hanabi_source_integration.md) | native/HLE backend decision and mechanical-scaffold architecture |

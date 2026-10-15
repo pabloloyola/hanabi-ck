@@ -13,6 +13,7 @@ from .replay import export_replay
 from .replay_audit import audit_game, compare_to_reference, select_replay
 from .runner import run_experiment
 from .turn_diagnostic import diagnose_turn
+from .usage_report import export_usage_report
 
 
 def main() -> None:
@@ -107,6 +108,10 @@ def main() -> None:
     diagnostic.add_argument("--output", required=True)
     diagnostic.add_argument("--repetitions", type=int, default=1)
     diagnostic.add_argument("--order-seed", type=int, default=0)
+
+    usage = sub.add_parser("usage-report", help="Summarize retained model calls, tokens and recorded cost")
+    usage.add_argument("paths", nargs="+", help="JSONL files or directories to scan recursively")
+    usage.add_argument("--output", required=True, help="Directory for usage.json and usage.md")
 
     args = parser.parse_args()
 
@@ -209,6 +214,8 @@ def main() -> None:
         print(json.dumps(report["recovery_policy"], indent=2))
     elif args.command == "identity-analyze":
         print(json.dumps(analyze_identity_suite(args.manifest), indent=2))
+    elif args.command == "usage-report":
+        print(export_usage_report(args.paths, args.output))
     elif args.command == "turn-diagnostic":
         report = diagnose_turn(args.config, args.log, turn=args.turn, output=args.output,
                                repetitions=args.repetitions, order_seed=args.order_seed)
