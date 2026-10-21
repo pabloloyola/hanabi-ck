@@ -108,6 +108,8 @@ def main() -> None:
     diagnostic.add_argument("--output", required=True)
     diagnostic.add_argument("--repetitions", type=int, default=1)
     diagnostic.add_argument("--order-seed", type=int, default=0)
+    diagnostic.add_argument("--output-mode", choices=["recorded", "prompt-json"], default="recorded",
+                            help="Keep recorded schema or omit enforcement while retaining the JSON prompt")
 
     usage = sub.add_parser("usage-report", help="Summarize retained model calls, tokens and recorded cost")
     usage.add_argument("paths", nargs="+", help="JSONL files or directories to scan recursively")
@@ -218,7 +220,8 @@ def main() -> None:
         print(export_usage_report(args.paths, args.output))
     elif args.command == "turn-diagnostic":
         report = diagnose_turn(args.config, args.log, turn=args.turn, output=args.output,
-                               repetitions=args.repetitions, order_seed=args.order_seed)
+                               repetitions=args.repetitions, order_seed=args.order_seed,
+                               output_mode=args.output_mode)
         print(json.dumps(report, indent=2))
         if any(not r["ok"] for r in report["results"]):
             raise SystemExit(1)

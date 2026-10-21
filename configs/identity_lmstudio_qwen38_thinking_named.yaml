@@ -1,0 +1,44 @@
+# Thinking requested; JSON prompted without schema enforcement.
+# Keep thinking enabled in LM Studio; verify returned reasoning in diagnostics.
+experiment: identity_lmstudio_qwen38_thinking_prompt_json_named_v1
+output_dir: runs
+num_players: 2
+backend: native
+seeds:
+- 0
+conditions:
+- ck0
+identity_disclosure: named
+mechanical_scaffold: derived
+agent_error_policy: abort
+log_private_instructions: true
+log_raw_model_responses: true
+log_request_payloads: true
+agents:
+- type: openai_compatible
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  api_key: lm-studio
+  temperature: 0.0
+  timeout_s: 300
+  max_tokens: 4096
+  structured_output: false
+  action_index_schema: bounds
+  http_max_retries: 0
+  extra_body: &id001
+    chat_template_kwargs:
+      enable_thinking: true
+      preserve_thinking: false
+  name: player_0
+- type: openai_compatible
+  model: qwen/qwen3.8-27b
+  base_url: http://localhost:1234/v1
+  api_key: lm-studio
+  temperature: 0.0
+  timeout_s: 300
+  max_tokens: 4096
+  structured_output: false
+  action_index_schema: bounds
+  http_max_retries: 0
+  extra_body: *id001
+  name: player_1

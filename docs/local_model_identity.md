@@ -1,5 +1,48 @@
 # LM Studio local identity smoke test
 
+## October 21 update: thinking without schema enforcement
+
+The fixed turn-2 test returned only action JSON in `reasoning_content` when a
+schema was enforced. Removing `response_format` produced a reasoning trace and
+final JSON in `content`. This supports testing schema interference; it does not
+prove the API thinking toggle is honored in both directions or improve game play.
+
+Repeat the original fixed-board four-arm diagnostic without schema enforcement:
+
+```bash
+uv run hanabi-ck turn-diagnostic \
+  configs/identity_lmstudio_qwen38_hidden.yaml \
+  --log runs/identity_lmstudio_qwen38_no_thinking_hidden_v1/ck0/seed_000000.jsonl \
+  --turn 2 --output-mode prompt-json \
+  --output runs/qwen38_turn2_prompt_json_v1.jsonl
+```
+
+The original config remains the reference for validating recorded settings.
+`--output-mode prompt-json` removes only schema enforcement from each probe;
+the existing four arms still request thinking off/on and original/shuffled order.
+Console summaries now include usage and response channel; complete API responses
+remain in the output JSONL. These are **requested** thinking settings, not a
+verified server-side manipulation.
+
+New candidate full-game configs are available:
+
+- `configs/identity_lmstudio_qwen38_thinking_hidden.yaml`
+- `configs/identity_lmstudio_qwen38_thinking_named.yaml`
+
+They request thinking, disable schema enforcement, retain the strict JSON action
+parser and abort on invalid output, and use new experiment directories. Existing
+configs and recordings are preserved. Validate one action before a full game:
+
+```bash
+uv run hanabi-ck action-check configs/identity_lmstudio_qwen38_thinking_hidden.yaml
+```
+
+The runner already prefers final `content` over separate reasoning when present.
+No JSON repair, prompt change, silent retry or automatic token increase is added.
+Full-game validation against the user's LM Studio is still pending.
+
+## Original no-thinking smoke configuration
+
 User's loaded model ID: `qwen/qwen3.8-27b`; server: `http://localhost:1234/v1`.
 Observed UI settings: Reasoning Effort Low; Enable Thinking off; Preserve Thinking off.
 Local MLX/GGUF quantization, context length, LM Studio version, engine version, and

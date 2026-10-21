@@ -28,14 +28,20 @@ def _normalized(payload):
     return result
 
 
-def diagnose_turn(config_path, log_path, *, turn, output, repetitions=1, order_seed=0):
+def diagnose_turn(
+    config_path, log_path, *, turn, output, repetitions=1, order_seed=0, output_mode="recorded"
+):
     """Make four independent calls per repetition; never execute a game action."""
     if repetitions < 1:
         raise ValueError("repetitions must be positive")
-    records = [json.loads(line) for line in Path(log_path).read_text().splitlines()
-               if line.strip()]
-    matches = [r for r in records if r.get("turn") == turn
-               and r.get("event_kind") in {"turn", "agent_error"}]
+    if output_mode not in {"recorded", "prompt-json"}:
+        raise ValueError("output_mode must be recorded or prompt-json")
+    records = [json.loads(line) for line in Path(log_path).read_text().splitlines() if line.strip()]
+    matches = [
+        r
+        for r in records
+        if r.get("turn") == turn and r.get("event_kind") in {"turn", "agent_error"}
+    ]
     if len(matches) != 1:
         raise ValueError("Source must contain exactly one decision at the requested turn")
     record = matches[0]
@@ -77,54 +83,94 @@ def diagnose_turn(config_path, log_path, *, turn, output, repetitions=1, order_s
             # Move every position so a repeated index is distinguishable.
             while any(i == value for i, value in enumerate(permutation)):
                 rng.shuffle(permutation)
-            arms = [(thinking, shuffled) for thinking in (False, True)
-                    for shuffled in (False, True)]
+            arms = [
+                (thinking, shuffled) for thinking in (False, True) for shuffled in (False, True)
+            ]
             rng.shuffle(arms)
             for thinking, shuffled in arms:
                 mapping = permutation if shuffled else list(range(len(legal)))
                 presented = [legal[i] for i in mapping]
                 payload = copy.deepcopy(original)
+                if output_mode == "prompt-json":
+                    payload.pop("response_format", None)
                 payload.setdefault("chat_template_kwargs", {}).update(
                     enable_thinking=thinking, preserve_thinking=False
                 )
                 if shuffled:
                     changed_user = copy.deepcopy(user)
                     changed_user["legal_actions"] = [
-                        {"action_index": i, "action": a.to_dict()}
-                        for i, a in enumerate(presented)
+                        {"action_index": i, "action": a.to_dict()} for i, a in enumerate(presented)
                     ]
                     payload["messages"][user_position]["content"] = json.dumps(
                         changed_user, ensure_ascii=False
                     )
                 label = f"thinking={'on' if thinking else 'off'}, order={'shuffled' if shuffled else 'original'}"
-                print(f"Repetition {repetition + 1}: {label} | requesting…", file=sys.stderr, flush=True)
+                print(
+                    f"Repetition {repetition + 1}: {label} | requesting…",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 started = time.monotonic()
                 decision = agent.act(obs, presented, instruction, prepared_payload=payload)
                 result = {
                     "source": {"log": str(log_path), "turn": turn, "player": record["player"]},
-                    "repetition": repetition + 1, "thinking_requested": thinking,
-                    "shuffled": shuffled, "order_seed": order_seed,
+                    "repetition": repetition + 1,
+                    "thinking_requested": thinking,
+                    "shuffled": shuffled,
+                    "order_seed": order_seed,
+                    "output_mode": output_mode,
                     "presented_index_to_original_index": mapping,
                     "presented_action_index": decision.action_index,
-                    "original_action_index": (mapping[decision.action_index]
-                                              if decision.action_index is not None else None),
+                    "original_action_index": (
+                        mapping[decision.action_index]
+                        if decision.action_index is not None
+                        else None
+                    ),
                     "action": decision.action.to_dict() if decision.action else None,
                     "ok": decision.action is not None and decision.parse_error is None,
                     "error": decision.parse_error,
                     "elapsed_s": round(time.monotonic() - started, 3),
                     "request_payload": payload,
-                    "request_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(),
+                    "request_sha256": hashlib.sha256(
+                        json.dumps(payload, sort_keys=True).encode()
+                    ).hexdigest(),
                     "raw_response": decision.raw_response,
                     "response_channel": decision.response_channel,
                     "api_response": decision.api_response,
                     "http_attempts": decision.http_attempts,
+                    "usage": (decision.api_response or {}).get("usage"),
                 }
                 stream.write(json.dumps(result, ensure_ascii=False) + "\n")
                 stream.flush()
-                results.append({k: v for k, v in result.items() if k in {
-                    "repetition", "thinking_requested", "shuffled", "presented_action_index",
-                    "original_action_index", "action", "ok", "error", "elapsed_s"
-                }})
-                print(f"{label} | {decision.raw_response} | error={decision.parse_error}", file=sys.stderr, flush=True)
-    return {"output": str(destination), "source_turn": turn, "results": results,
-            "interpretation": "Controlled single-state diagnostic; requested thinking is not proof of actual reasoning."}
+                results.append(
+                    {
+                        k: v
+                        for k, v in result.items()
+                        if k
+                        in {
+                            "repetition",
+                            "thinking_requested",
+                            "shuffled",
+                            "presented_action_index",
+                            "original_action_index",
+                            "action",
+                            "ok",
+                            "error",
+                            "elapsed_s",
+                            "output_mode",
+                            "response_channel",
+                            "usage",
+                        }
+                    }
+                )
+                print(
+                    f"{label} | {decision.raw_response} | error={decision.parse_error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+    return {
+        "output": str(destination),
+        "source_turn": turn,
+        "results": results,
+        "interpretation": "Controlled single-state diagnostic; requested thinking is not proof of actual reasoning.",
+    }

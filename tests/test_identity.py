@@ -15,12 +15,13 @@ from hanabi_ck.runner import run_experiment
 SPECS = [{"type": "simple", "model": "model-A"}, {"type": "simple", "model": "model-B"}]
 
 
-def suite(tmp_path):
+def suite(tmp_path, modes=None):
     source = tmp_path / "suite.yaml"
     source.write_text(
         yaml.safe_dump(
             {
                 "experiment": "identity",
+                **({"disclosure_modes": modes} if modes is not None else {}),
                 "seeds": [0, 1],
                 "models": dict(zip("AB", SPECS)),
                 "game": {"output_dir": str(tmp_path / "runs")},
@@ -44,6 +45,47 @@ def test_disclosure_changes_only_partner_identity():
         identity_instruction(SPECS, 0, "unknown")
     with pytest.raises(ValueError):
         identity_instruction([SPECS[0]], 0, "hidden")
+
+
+@pytest.mark.parametrize("mode,informed", [("p0_named", 0), ("p1_named", 1)])
+def test_one_sided_disclosure_matches_existing_private_text(mode, informed):
+    for player in (0, 1):
+        expected = "named" if player == informed else "hidden"
+        assert identity_instruction(SPECS, player, mode) == identity_instruction(SPECS, player, expected)
+
+
+def test_four_modes_prepare_run_and_paired_analysis(tmp_path, monkeypatch):
+    modes = ["hidden", "named", "p0_named", "p1_named"]
+    manifest, output = suite(tmp_path, modes=modes)
+    assert len(manifest["cells"]) == 16
+    assert manifest["n_games_planned"] == 32
+    seen = []
+
+    class Recorder(SimpleAgent):
+        def act(self, obs, legal, instruction):
+            seen.append((obs.player_id, instruction))
+            return super().act(obs, legal, instruction)
+
+    monkeypatch.setattr("hanabi_ck.runner._build_agent", lambda spec, seed: Recorder(name=spec["name"]))
+    baseline = yaml.safe_load((output / "AB_hidden.yaml").read_text())
+    for mode in modes:
+        cfg = yaml.safe_load((output / f"AB_{mode}.yaml").read_text())
+        assert cfg["agents"] == baseline["agents"]
+        assert cfg["seeds"] == baseline["seeds"]
+        seen.clear()
+        run_experiment(output / f"AB_{mode}.yaml")
+        for player, instruction in seen:
+            assert instruction.endswith(identity_instruction(SPECS, player, mode))
+    report = analyze_identity_suite(output / "manifest.json")
+    assert report["paired"]["AB"]["n_valid_pairs"] == 2
+    for mode in ("p0_named", "p1_named"):
+        assert report["one_sided_vs_hidden"][f"AB_{mode}_minus_hidden"]["n_valid_pairs"] == 2
+
+
+@pytest.mark.parametrize("modes", [[], ["hidden", "hidden"], ["unknown"], [None], "hidden"])
+def test_prepare_rejects_invalid_disclosure_modes(tmp_path, modes):
+    with pytest.raises(ValueError, match="disclosure_modes"):
+        suite(tmp_path, modes=modes)
 
 
 def test_suite_balances_pairings_and_preserves_settings(tmp_path):

@@ -1,10 +1,10 @@
 import copy
 import json
-
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
 import yaml
 
 from hanabi_ck.actions import Action
@@ -15,10 +15,16 @@ from hanabi_ck.turn_diagnostic import diagnose_turn
 
 
 def source(tmp_path):
-    spec = {"type": "openai_compatible", "model": "test", "api_key": "test",
-            "structured_output": True, "action_index_schema": "bounds",
-            "extra_body": {"chat_template_kwargs": {"enable_thinking": False,
-                                                    "preserve_thinking": False}}}
+    spec = {
+        "type": "openai_compatible",
+        "model": "test",
+        "api_key": "test",
+        "structured_output": True,
+        "action_index_schema": "bounds",
+        "extra_body": {
+            "chat_template_kwargs": {"enable_thinking": False, "preserve_thinking": False}
+        },
+    }
     config = tmp_path / "config.yaml"
     config.write_text(yaml.safe_dump({"agents": [spec, spec], "mechanical_scaffold": "derived"}))
     game = HanabiGame(num_players=2, seed=0)
@@ -28,10 +34,21 @@ def source(tmp_path):
     agent = _build_agent(dict(spec, mechanical_scaffold="derived"), seed=0)
     payload = agent._request_payload(obs, legal, "test instruction")
     log = tmp_path / "source.jsonl"
-    log.write_text(json.dumps({"event_kind": "turn", "turn": 2, "player": 0,
-                              "private_instruction": "test instruction", "request_payload": payload,
-                              "legal_actions": [a.to_dict() for a in legal],
-                              "observation": obs.to_dict()}, sort_keys=True) + "\n")
+    log.write_text(
+        json.dumps(
+            {
+                "event_kind": "turn",
+                "turn": 2,
+                "player": 0,
+                "private_instruction": "test instruction",
+                "request_payload": payload,
+                "legal_actions": [a.to_dict() for a in legal],
+                "observation": obs.to_dict(),
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
     return config, log, payload, legal
 
 
@@ -44,9 +61,12 @@ def check_fixed_state_and_index_mapping(tmp_path):
         calls.append(copy.deepcopy(prepared_payload))
         # Choose the same actual action even when its presented index moves.
         selected = presented.index(legal[10])
-        return AgentDecision(action=presented[selected], action_index=selected,
-                             raw_response=json.dumps({"action_index": selected}),
-                             api_response={"choices": [{"message": {"reasoning_content": "test"}}]})
+        return AgentDecision(
+            action=presented[selected],
+            action_index=selected,
+            raw_response=json.dumps({"action_index": selected}),
+            api_response={"choices": [{"message": {"reasoning_content": "test"}}]},
+        )
 
     patcher = patch.object(OpenAICompatibleAgent, "act", act)
     patcher.start()
@@ -56,7 +76,11 @@ def check_fixed_state_and_index_mapping(tmp_path):
     rows = [json.loads(line) for line in output.read_text().splitlines()]
     assert len(calls) == len(rows) == 4
     assert {(r["thinking_requested"], r["shuffled"]) for r in rows} == {
-        (False, False), (False, True), (True, False), (True, True)}
+        (False, False),
+        (False, True),
+        (True, False),
+        (True, True),
+    }
     assert all(r["original_action_index"] == 10 for r in rows)
     original_user = json.loads(original["messages"][1]["content"])
     for row, payload in zip(rows, calls):
@@ -64,7 +88,10 @@ def check_fixed_state_and_index_mapping(tmp_path):
         assert payload["messages"][0] == original["messages"][0]
         user = json.loads(payload["messages"][1]["content"])
         assert user["observation"] == original_user["observation"]
-        assert user["private_experimental_instruction"] == original_user["private_experimental_instruction"]
+        assert (
+            user["private_experimental_instruction"]
+            == original_user["private_experimental_instruction"]
+        )
         assert row["api_response"]["choices"][0]["message"]["reasoning_content"] == "test"
         if row["shuffled"]:
             assert row["presented_action_index"] != 10
@@ -90,6 +117,42 @@ def check_changed_controls_rejected_before_call(tmp_path):
 
 
 class TestTurnDiagnostic(unittest.TestCase):
+    def test_prompt_json_omits_schema_and_preserves_board(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config, log, original, legal = source(root)
+            calls = []
+
+            def act(agent, obs, presented, instruction, *, prepared_payload):
+                calls.append(prepared_payload)
+                return AgentDecision(
+                    action=presented[0],
+                    action_index=0,
+                    response_channel="content",
+                    raw_response='{"action_index": 0}',
+                    api_response={
+                        "usage": {"completion_tokens": 100},
+                        "choices": [{"message": {"reasoning_content": "trace"}}],
+                    },
+                )
+
+            with patch.object(OpenAICompatibleAgent, "act", act):
+                report = diagnose_turn(
+                    config, log, turn=2, output=root / "no-schema.jsonl", output_mode="prompt-json"
+                )
+            self.assertEqual(len(calls), 4)
+            for payload in calls:
+                self.assertNotIn("response_format", payload)
+                self.assertEqual(payload["messages"][0], original["messages"][0])
+                self.assertEqual(
+                    json.loads(payload["messages"][1]["content"])["observation"],
+                    json.loads(original["messages"][1]["content"])["observation"],
+                )
+            for result in report["results"]:
+                self.assertEqual(result["output_mode"], "prompt-json")
+                self.assertEqual(result["response_channel"], "content")
+                self.assertEqual(result["usage"]["completion_tokens"], 100)
+
     def test_fixed_state_and_index_mapping(self):
         with tempfile.TemporaryDirectory() as directory:
             check_fixed_state_and_index_mapping(Path(directory))

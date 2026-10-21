@@ -291,3 +291,44 @@ The comparison combines retained complete cells with separately recorded recover
 attempts. Report the excluded original abort and operational retry-policy change.
 A repeated in-flight error remains bounded by the retry count and wait cap; it
 does not trigger provider switching, action fallback, or credit-error retries.
+
+## October 21 update: one-sided disclosure
+
+Four private disclosure modes are now supported. Every player still receives its
+own model name. Only disclosure of the **partner's** name changes:
+
+| `identity_disclosure` | Player 0 receives partner name | Player 1 receives partner name |
+|---|---|---|
+| `hidden` | No | No |
+| `named` | Yes | Yes |
+| `p0_named` | Yes | No |
+| `p1_named` | No | Yes |
+
+The same final sentence is retained in every player's prompt: no statement is
+made about what identity information the teammate received. The informed player
+is therefore not additionally told that the other player is uninformed. These
+are private disclosure treatments, not higher-order knowledge assurances.
+Player numbers identify seats, not model labels: in BA, player 0 is model B.
+
+Existing suite files still generate eight cells by default. To include both
+one-sided modes, set `disclosure_modes: [hidden, named, p0_named, p1_named]`.
+The new config below prepares **16 games at seed 0** (four pairings × four modes):
+
+```bash
+uv run hanabi-ck identity-prepare \
+  configs/identity_disclosure_openrouter_gemini36_asymmetric_smoke.yaml \
+  --output configs/generated_identity_asymmetric_smoke_v1
+```
+
+Preparation makes no model calls. This uses a fresh experiment name and does
+not reclassify old results or reuse earlier games as new baselines. No paid run
+has been performed for the new suite. Validate endpoint availability before runs.
+
+`identity-analyze` retains the existing named-minus-hidden `paired` section and
+adds `one_sided_vs_hidden`, with matched-seed differences for each seat's
+disclosure versus hidden. Missing/aborted cells do not enter a paired contrast.
+Recovery supports the new modes through the existing manifest mechanism.
+
+The funding estimate for eight conditions × ten seeds must be doubled in game
+count if all four modes are included: four pairings × four modes × ten seeds
+is **160 games**, not 80. A seed-0 smoke remains a descriptive technical check.

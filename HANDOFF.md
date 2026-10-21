@@ -3,10 +3,35 @@
 **Repository:** `pabloloyola/hanabi-ck`  
 **Branch:** `main`  
 **Original handoff HEAD:** `4a07af3aa2d750e2cfe005cfc062cc8eed19998b`  
-**Updated:** 2026-10-09
+**Updated:** 2026-10-21
 
 This file is the starting point for a new ChatGPT session. Read it before
 changing experiments, documentation, or the pair runner.
+
+## October 21 status (supersedes the older immediate-goal notes below)
+
+- Full-game replay/audit, identity study preparation/analysis/recovery and usage
+  reporting are implemented. User-reported eight GPT-5.4/Gemini-3.6-Flash
+  identity games are complete at seed 0; no multi-seed identity pilot is reported.
+- Identity supports hidden/named and private one-sided modes `p0_named` and
+  `p1_named`. No prompt states the teammate's disclosure. Existing two-mode
+  suite generation is unchanged by default; a fresh four-mode smoke config
+  prepares sixteen cells. New one-sided model runs remain pending.
+- LM Studio Qwen-3.8-27B schema-enforced diagnostic returned JSON in the reasoning
+  channel with empty final content. A user-run request without schema enforcement
+  returned a separate reasoning trace and final JSON. New thinking candidate
+  configs and `turn-diagnostic --output-mode prompt-json` allow further testing;
+  server-side off/on compliance and full-game performance are not yet verified.
+- `usage-report` now includes completed-game averages and per-protocol groups.
+  Missing token/cost fields exclude a game from that metric's mean. Aborted runs
+  remain in historical totals. User-reported eight-game identity reference:
+  592 model calls, 3,134,939 tokens; 74 calls and 391,867.375 tokens per game.
+- Current offline validation: **167 passed, 12 optional HLE skips**. No real model
+  requests were made during this implementation; HTTP tests use mocked transport.
+- Next: user runs the prompt-JSON fixed-turn diagnostic locally, verifies response
+  channels/thinking traces, then validates a candidate full-game config. Generate
+  the one-sided smoke suite separately; do not launch a large paid batch until its
+  protocol and cost are reviewed. See the updated local/identity/usage documents.
 
 ## 1. Immediate goal
 

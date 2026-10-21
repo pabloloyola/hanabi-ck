@@ -13,7 +13,7 @@ import yaml
 
 from .metrics import aggregate_games
 
-MODES = {"hidden", "named"}
+MODES = {"hidden", "named", "p0_named", "p1_named"}
 
 
 def identity_instruction(specs: list[dict[str, Any]], player: int, mode: str) -> str:
@@ -21,9 +21,12 @@ def identity_instruction(specs: list[dict[str, Any]], player: int, mode: str) ->
         raise ValueError(f"identity_disclosure must be one of {sorted(MODES)}")
     if len(specs) != 2 or any(not s.get("model") for s in specs):
         raise ValueError("Identity disclosure requires two agents with explicit model IDs")
+    if player not in (0, 1):
+        raise ValueError("Identity disclosure player must be 0 or 1")
     own, partner = specs[player]["model"], specs[1 - player]["model"]
     text = f"Model identity information:\nYour underlying model is {own}.\n"
-    if mode == "hidden":
+    informed = mode == "named" or mode == f"p{player}_named"
+    if not informed:
         text += "Your teammate's underlying model identity is not disclosed."
     else:
         text += f"Your teammate's underlying model is {partner}."
@@ -44,6 +47,11 @@ def prepare_identity_suite(config_path: str | Path, output: str | Path) -> dict[
     seeds = cfg.get("seeds", [0])
     if not seeds or len(seeds) != len(set(seeds)):
         raise ValueError("Provide nonempty unique seeds")
+    modes = cfg.get("disclosure_modes", ["hidden", "named"])
+    if (not isinstance(modes, list) or not modes
+            or any(not isinstance(m, str) or m not in MODES for m in modes)
+            or len(modes) != len(set(modes))):
+        raise ValueError(f"disclosure_modes must be a nonempty unique list from {sorted(MODES)}")
     root = Path(output)
     if root.exists() and any(root.iterdir()):
         raise ValueError("Output directory must be empty to preserve previous setups")
@@ -55,7 +63,7 @@ def prepare_identity_suite(config_path: str | Path, output: str | Path) -> dict[
     cells = []
     root.mkdir(parents=True, exist_ok=True)
     for pairing in ("AA", "BB", "AB", "BA"):
-        for mode in ("hidden", "named"):
+        for mode in modes:
             cell = f"{pairing}_{mode}"
             game = deepcopy(common)
             game.update(
@@ -87,7 +95,8 @@ def prepare_identity_suite(config_path: str | Path, output: str | Path) -> dict[
     manifest = {
         "experiment": cfg["experiment"],
         "seeds": seeds,
-        "n_games_planned": 8 * len(seeds),
+        "n_games_planned": 4 * len(modes) * len(seeds),
+        "disclosure_modes": modes,
         "cells": cells,
         "models": {m: s["model"] for m, s in models.items()},
     }
@@ -130,6 +139,7 @@ def analyze_identity_suite(manifest_path: str | Path) -> dict[str, Any]:
         }
         valid_by_cell[cell["cell"]] = {g["seed"]: g for g in valid}
     paired = {}
+    one_sided = {}
     for pairing in ("AA", "BB", "AB", "BA"):
         hidden = valid_by_cell.get(f"{pairing}_hidden", {})
         named = valid_by_cell.get(f"{pairing}_named", {})
@@ -149,6 +159,20 @@ def analyze_identity_suite(manifest_path: str | Path) -> dict[str, Any]:
             "differences_named_minus_hidden": differences,
             "mean_score_difference": mean(d["score"] for d in differences) if differences else None,
         }
+        for mode in ("p0_named", "p1_named"):
+            if not any(c["cell"] == f"{pairing}_{mode}" for c in manifest["cells"]):
+                continue
+            informed = valid_by_cell.get(f"{pairing}_{mode}", {})
+            common_seeds = sorted(hidden.keys() & informed.keys())
+            deltas = [
+                {"seed": s, **{metric: informed[s][metric] - hidden[s][metric]
+                               for metric in ("score", "hints", "misplays", "turns")}}
+                for s in common_seeds
+            ]
+            one_sided[f"{pairing}_{mode}_minus_hidden"] = {
+                "n_valid_pairs": len(deltas), "differences": deltas,
+                "mean_score_difference": mean(d["score"] for d in deltas) if deltas else None,
+            }
     return {
         "cells": cells,
         "missing_cells": missing,
@@ -158,6 +182,7 @@ def analyze_identity_suite(manifest_path: str | Path) -> dict[str, Any]:
             if c.get("previous_attempts")
         },
         "paired": paired,
+        "one_sided_vs_hidden": one_sided,
         "interpretation": "Descriptive identity-disclosure pilot; no CK or significance claim.",
     }
 
